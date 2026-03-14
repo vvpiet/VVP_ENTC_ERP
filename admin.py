@@ -1,12 +1,21 @@
 import streamlit as st
-from db import get_connection, _sql
+from db import get_connection, _sql, get_db_info
 from auth import hash_password
 import pandas as pd
 
 
 def admin_dashboard():
     st.title("Admin Dashboard")
-    menu = ["Users","Students","Subjects","Timetable","View Reports"]
+    db_info = get_db_info()
+    st.sidebar.markdown("### Connection")
+    if db_info.get("backend") == "postgres":
+        st.sidebar.success(f"Postgres / Neon")
+        st.sidebar.write(f"URL: `{db_info.get('url')}`")
+    else:
+        st.sidebar.success("SQLite")
+        st.sidebar.write(f"File: `{db_info.get('path')}`")
+
+    menu = ["Users","Students","Subjects","Timetable","Attendance Reports"]
     choice = st.sidebar.selectbox("Menu", menu)
     if choice == "Users":
         manage_users()
@@ -16,7 +25,7 @@ def admin_dashboard():
         manage_subjects()
     elif choice == "Timetable":
         manage_timetable()
-    elif choice == "View Reports":
+    elif choice == "Attendance Reports":
         view_reports()
 
 
@@ -62,6 +71,21 @@ def manage_users():
     conn.close()
     st.dataframe(df)
 
+    st.markdown("---")
+    st.subheader("Delete user")
+    if not df.empty:
+        to_delete = st.selectbox("Select user", df['username'].tolist())
+        if st.button("Delete user"):
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute(_sql("DELETE FROM attendance WHERE student_id IN (SELECT id FROM users WHERE username=?)"), (to_delete,))
+            cur.execute(_sql("DELETE FROM students WHERE id IN (SELECT id FROM users WHERE username=?)"), (to_delete,))
+            cur.execute(_sql("DELETE FROM faculty WHERE id IN (SELECT id FROM users WHERE username=?)"), (to_delete,))
+            cur.execute(_sql("DELETE FROM users WHERE username=?"), (to_delete,))
+            conn.commit()
+            conn.close()
+            st.success(f"Deleted user {to_delete}")
+
 
 def manage_students():
     st.subheader("Students")
@@ -98,6 +122,22 @@ def manage_students():
             conn.commit()
             conn.close()
             st.success("Students uploaded and sorted")
+
+    st.markdown("---")
+    st.subheader("Delete student")
+    conn = get_connection()
+    df_students = pd.read_sql_query(_sql("SELECT id,name,roll,class_level FROM students"), conn)
+    conn.close()
+    if not df_students.empty:
+        to_delete = st.selectbox("Select student (roll)", df_students['roll'].tolist())
+        if st.button("Delete student"):
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute(_sql("DELETE FROM attendance WHERE student_id IN (SELECT id FROM students WHERE roll=?)"), (to_delete,))
+            cur.execute(_sql("DELETE FROM students WHERE roll=?"), (to_delete,))
+            conn.commit()
+            conn.close()
+            st.success(f"Deleted student {to_delete}")
 
 
 def manage_subjects():
@@ -139,6 +179,17 @@ def manage_subjects():
     # show subjects
     df = pd.read_sql_query(_sql("SELECT s.id,s.name,s.code,s.class_level,f.name as faculty FROM subjects s LEFT JOIN faculty f ON s.faculty_id=f.id"), conn)
     st.dataframe(df)
+
+    st.markdown("---")
+    st.subheader("Delete subject")
+    if not df.empty:
+        to_delete = st.selectbox("Select subject code", df['code'].tolist())
+        if st.button("Delete subject"):
+            conn.execute(_sql("DELETE FROM attendance WHERE subject_id IN (SELECT id FROM subjects WHERE code=?)"), (to_delete,))
+            conn.execute(_sql("DELETE FROM timetable WHERE subject_id IN (SELECT id FROM subjects WHERE code=?)"), (to_delete,))
+            conn.execute(_sql("DELETE FROM subjects WHERE code=?"), (to_delete,))
+            conn.commit()
+            st.success(f"Deleted subject {to_delete}")
     conn.close()
 
 
@@ -155,5 +206,36 @@ def manage_timetable():
 
 
 def view_reports():
-    st.subheader("PDF Reports")
-    st.write("Use the reports module to generate PDFs.")
+    st.subheader("Attendance Reports")
+    period = st.selectbox("Period", ["Daily","Weekly","Monthly","Custom"])
+    today = pd.to_datetime("today").normalize()
+    if period == "Daily":
+        start = st.date_input("Date", today.date())
+        end = start
+    elif period == "Weekly":
+        start = st.date_input("Week start", today.date())
+        end = start + pd.Timedelta(days=6)
+    elif period == "Monthly":
+        month = st.date_input("Month start", today.replace(day=1).date())
+        start = month
+        end = (pd.to_datetime(month) + pd.offsets.MonthEnd(0)).date()
+    else:
+        start = st.date_input("Start date", today.date())
+        end = st.date_input("End date", today.date())
+
+    if st.button("Generate report"):
+        conn = get_connection()
+        df = pd.read_sql_query(
+            _sql("SELECT a.date, s.name as subject, st.roll, st.name as student, a.status "
+                 "FROM attendance a "
+                 "JOIN students st ON a.student_id=st.id "
+                 "JOIN subjects s ON a.subject_id=s.id "
+                 "WHERE date BETWEEN ? AND ?"),
+            conn, params=(str(start), str(end)))
+        conn.close()
+        if df.empty:
+            st.warning("No attendance records found for the selected period.")
+            return
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("Download CSV", data=csv, file_name=f"attendance_{start}_{end}.csv")
+        st.dataframe(df)

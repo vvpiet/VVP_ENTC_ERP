@@ -9,6 +9,17 @@ DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("NEON_DATABASE_U
 USE_POSTGRES = bool(DATABASE_URL)
 
 
+def get_db_info() -> dict:
+    """Return info about the active database backend."""
+    if USE_POSTGRES:
+        redacted = DATABASE_URL
+        if "@" in redacted:
+            userpart, hostpart = redacted.split("@", 1)
+            redacted = "<hidden>@" + hostpart
+        return {"backend": "postgres", "url": redacted}
+    return {"backend": "sqlite", "path": DB_PATH}
+
+
 def get_connection() -> Connection:
     """Return a DB connection.
 
@@ -180,12 +191,42 @@ def initialize_db():
 
         c.execute('''
         CREATE TABLE IF NOT EXISTS alerts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             student_id INTEGER NOT NULL,
             subject_id INTEGER NOT NULL,
             message TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(student_id) REFERENCES students(id),
+            FOREIGN KEY(subject_id) REFERENCES subjects(id)
+        )
+        ''')
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS ler (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            faculty_id INTEGER NOT NULL,
+            subject_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            lecture_number INTEGER,
+            syllabus_covered_pct INTEGER,
+            present_count INTEGER,
+            absent_rolls TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(faculty_id) REFERENCES faculty(id),
+            FOREIGN KEY(subject_id) REFERENCES subjects(id)
+        )
+        ''')
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS ler (
+            id SERIAL PRIMARY KEY,
+            faculty_id INTEGER NOT NULL,
+            subject_id INTEGER NOT NULL,
+            date DATE NOT NULL,
+            lecture_number INTEGER,
+            syllabus_covered_pct INTEGER,
+            present_count INTEGER,
+            absent_rolls TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(faculty_id) REFERENCES faculty(id),
             FOREIGN KEY(subject_id) REFERENCES subjects(id)
         )
         ''')
