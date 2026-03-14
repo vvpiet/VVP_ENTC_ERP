@@ -126,6 +126,11 @@ def initialize_db():
             FOREIGN KEY(subject_id) REFERENCES subjects(id)
         )
         ''')
+
+        # Ensure we commit DDL in Postgres right away so tables don't disappear if
+        # a later statement fails (e.g. ALTER/UPDATE during migrations).
+        conn.commit()
+
     else:
         # SQLite schema
         c.execute('''
@@ -191,7 +196,7 @@ def initialize_db():
 
         c.execute('''
         CREATE TABLE IF NOT EXISTS alerts (
-            id SERIAL PRIMARY KEY,
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
             student_id INTEGER NOT NULL,
             subject_id INTEGER NOT NULL,
             message TEXT,
@@ -200,6 +205,7 @@ def initialize_db():
             FOREIGN KEY(subject_id) REFERENCES subjects(id)
         )
         ''')
+
         c.execute('''
         CREATE TABLE IF NOT EXISTS ler (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -215,21 +221,10 @@ def initialize_db():
             FOREIGN KEY(subject_id) REFERENCES subjects(id)
         )
         ''')
-        c.execute('''
-        CREATE TABLE IF NOT EXISTS ler (
-            id SERIAL PRIMARY KEY,
-            faculty_id INTEGER NOT NULL,
-            subject_id INTEGER NOT NULL,
-            date DATE NOT NULL,
-            lecture_number INTEGER,
-            syllabus_covered_pct INTEGER,
-            present_count INTEGER,
-            absent_rolls TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(faculty_id) REFERENCES faculty(id),
-            FOREIGN KEY(subject_id) REFERENCES subjects(id)
-        )
-        ''')
+
+        # Ensure we commit DDL in SQLite so tables persist even if later
+        # schema-migration steps fail.
+        conn.commit()
 
     # add missing columns if upgrading existing db
     try:
