@@ -90,6 +90,7 @@ def view_attendance(user):
 def lecture_engagement_register(user):
     st.subheader("Lecture Engagement Register (LER)")
     conn = get_connection()
+    cur = conn.cursor()
     # resolve faculty id same as attendance logic
     fid = None
     try:
