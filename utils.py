@@ -12,7 +12,9 @@ def check_alerts_threshold(threshold=75):
     JOIN subjects sub ON a.subject_id=sub.id
     GROUP BY a.student_id, sub.id
     '''
-    for row in c.execute(query):
+    # psycopg2's cursor.execute() returns None (unlike sqlite3), so call execute separately
+    c.execute(query)
+    for row in c:
         student_id, subject_id, pct = row
         if pct < threshold:
             msg = f"Attendance below {threshold}%: {pct:.1f}%"
