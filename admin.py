@@ -56,28 +56,27 @@ def manage_users():
             uname = uname.strip()
             conn = get_connection()
             try:
-                create_user(uname, pwd, role)
+                uid = create_user(uname, pwd, role)
                 # add corresponding student/faculty entry if needed
                 cur = conn.cursor()
-                uname_lower = uname.lower()
                 if role == 'student':
                     # NOTE: psycopg2 requires a cursor for execute (sqlite allows conn.execute)
                     cur.execute(
-                        _sql("INSERT INTO students (id,name,roll) VALUES ((SELECT id FROM users WHERE LOWER(username)=?),?,?) ON CONFLICT(roll) DO NOTHING"),
-                        (uname_lower, uname, uname)
+                        _sql("INSERT INTO students (id,name,roll) VALUES (?,?,?) ON CONFLICT(roll) DO NOTHING"),
+                        (uid, uname, uname)
                     )
+                    st.write(f"Inserted student row for user id {uid}")
                 elif role == 'faculty':
                     # ensure faculty table uses the same id and name as user
-                    # note: username already normalized in create_user
-                    cur.execute(_sql("SELECT id FROM users WHERE LOWER(username)=?"), (uname_lower,))
-                    urow = cur.fetchone()
-                    if urow:
-                        # psycopg2 returns dict-like rows; sqlite returns tuple-like
-                        uid = urow.get('id') if isinstance(urow, dict) else urow[0]
+                    try:
                         cur.execute(
                             _sql("INSERT INTO faculty (id,name) VALUES (?,?)"),
                             (uid, uname)
                         )
+                        st.write(f"Inserted faculty row for user id {uid}")
+                    except Exception as e:
+                        st.error(f"Faculty insert failed: {e}")
+                        raise
                 conn.commit()
                 st.success("User created")
                 rerun()
@@ -196,9 +195,6 @@ def manage_subjects():
         fac_rows = cur_fac.fetchall()
         fac_options = [""] + [r['name'] for r in fac_rows]
         fac = st.selectbox("Faculty", fac_options)
-        with st.expander("Debug: faculty lookup", expanded=False):
-            st.write(f"Faculty rows count: {len(fac_rows)}")
-            st.write([r['name'] for r in fac_rows])
         submitted = st.form_submit_button("Add")
         if submitted:
             # validate fields
