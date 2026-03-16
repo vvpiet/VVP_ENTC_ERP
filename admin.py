@@ -47,12 +47,12 @@ def manage_users():
                     # NOTE: psycopg2 requires a cursor for execute (sqlite allows conn.execute)
                     cur.execute(
                         _sql("INSERT INTO students (id,name,roll) VALUES ((SELECT id FROM users WHERE username=?),?,?) ON CONFLICT(roll) DO NOTHING"),
-                        (uname, uname, uname)
+                        (uname.lower(), uname, uname)
                     )
                 elif role == 'faculty':
                     # ensure faculty table uses the same id and name as user
                     # note: username already normalized in create_user
-                    cur.execute(_sql("SELECT id FROM users WHERE username=?"), (uname,))
+                    cur.execute(_sql("SELECT id FROM users WHERE username=?"), (uname.lower(),))
                     urow = cur.fetchone()
                     if urow:
                         uid = urow[0]
@@ -70,16 +70,17 @@ def manage_users():
     conn = get_connection()
     df = pd.read_sql_query(_sql("SELECT u.id, COALESCE(s.name, f.name, u.username) as display_name, u.username, u.role FROM users u LEFT JOIN students s ON u.id = s.id LEFT JOIN faculty f ON u.id = f.id"), conn)
     conn.close()
-    st.dataframe(df[['id', 'display_name', 'role']])
+    df = df.rename(columns={'display_name': 'Name'})
+    st.dataframe(df[['id', 'Name', 'role']])
 
     st.markdown("---")
     st.subheader("Delete user")
     if not df.empty:
-        to_delete_display = st.selectbox("Select user", df['display_name'].tolist())
+        to_delete_display = st.selectbox("Select user", df['Name'].tolist())
         if st.button("Delete user"):
             conn = get_connection()
             cur = conn.cursor()
-            username_to_delete = df.loc[df['display_name'] == to_delete_display, 'username'].values[0]
+            username_to_delete = df.loc[df['Name'] == to_delete_display, 'username'].values[0]
             cur.execute(_sql("DELETE FROM attendance WHERE student_id IN (SELECT id FROM users WHERE username=?)"), (username_to_delete,))
             cur.execute(_sql("DELETE FROM students WHERE id IN (SELECT id FROM users WHERE username=?)"), (username_to_delete,))
             cur.execute(_sql("DELETE FROM faculty WHERE id IN (SELECT id FROM users WHERE username=?)"), (username_to_delete,))
