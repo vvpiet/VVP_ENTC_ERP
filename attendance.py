@@ -13,7 +13,8 @@ def mark_attendance(subject_id):
     conn = get_connection()
     c = conn.cursor()
     # get subject class_level by id
-    res = c.execute(_sql("SELECT class_level FROM subjects WHERE id=?"), (subject_id,)).fetchone()
+    c.execute(_sql("SELECT class_level FROM subjects WHERE id=?"), (subject_id,))
+    res = c.fetchone()
     if not res:
         st.error("Subject not found")
         return

@@ -206,7 +206,8 @@ def manage_subjects():
                     # find faculty id by name
                     fid = next((r['id'] for r in fac_rows if r['name'] == fac), None)
                 # check uniqueness
-                exists = c.execute(_sql("SELECT 1 FROM subjects WHERE code=?"), (code,)).fetchone()
+                c.execute(_sql("SELECT 1 FROM subjects WHERE code=?"), (code,))
+                exists = c.fetchone()
                 if exists:
                     st.error("Subject code already exists")
                 else:
