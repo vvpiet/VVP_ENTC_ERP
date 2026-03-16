@@ -4,6 +4,21 @@ from auth import hash_password
 import pandas as pd
 
 
+def rerun():
+    # Streamlit removed or renamed experimental_rerun in some versions
+    if hasattr(st, "experimental_rerun"):
+        st.experimental_rerun()
+    else:
+        # fallback via runtime exception
+        try:
+            from streamlit.runtime.scriptrunner import RerunException
+            from streamlit.runtime.scriptrunner_utils.script_requests import RerunData
+            raise RerunException(RerunData())
+        except ImportError:
+            # last resort: refresh by writing a small script tag
+            st.write("<meta http-equiv=\"refresh\" content=\"0\">", unsafe_allow_html=True)
+
+
 def admin_dashboard():
     st.title("Admin Dashboard")
     db_info = get_db_info()
@@ -38,21 +53,23 @@ def manage_users():
         submitted = st.form_submit_button("Create")
         if submitted:
             from auth import create_user
+            uname = uname.strip()
             conn = get_connection()
             try:
                 create_user(uname, pwd, role)
                 # add corresponding student/faculty entry if needed
                 cur = conn.cursor()
+                uname_lower = uname.lower()
                 if role == 'student':
                     # NOTE: psycopg2 requires a cursor for execute (sqlite allows conn.execute)
                     cur.execute(
                         _sql("INSERT INTO students (id,name,roll) VALUES ((SELECT id FROM users WHERE username=?),?,?) ON CONFLICT(roll) DO NOTHING"),
-                        (uname.lower(), uname, uname)
+                        (uname_lower, uname, uname)
                     )
                 elif role == 'faculty':
                     # ensure faculty table uses the same id and name as user
                     # note: username already normalized in create_user
-                    cur.execute(_sql("SELECT id FROM users WHERE username=?"), (uname.lower(),))
+                    cur.execute(_sql("SELECT id FROM users WHERE username=?"), (uname_lower,))
                     urow = cur.fetchone()
                     if urow:
                         uid = urow[0]
@@ -62,6 +79,7 @@ def manage_users():
                         )
                 conn.commit()
                 st.success("User created")
+                rerun()
             except Exception as e:
                 st.error(str(e))
             finally:
@@ -88,6 +106,7 @@ def manage_users():
             conn.commit()
             conn.close()
             st.success(f"Deleted user {to_delete_display}")
+            rerun()
 
 
 def manage_students():
