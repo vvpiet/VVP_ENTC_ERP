@@ -92,10 +92,10 @@ def manage_users():
     users = []
     for r in rows:
         users.append({
-            'id': r[0],
-            'Name': r[1],
-            'username': r[2],
-            'role': r[3]
+            'id': r['id'],
+            'Name': r['display_name'],
+            'username': r['username'],
+            'role': r['role']
         })
     conn.close()
 
@@ -193,7 +193,7 @@ def manage_subjects():
         cur_fac = conn.cursor()
         cur_fac.execute(_sql("SELECT id,name FROM faculty"))
         fac_rows = cur_fac.fetchall()
-        fac_options = [""] + [r[1] for r in fac_rows]
+        fac_options = [""] + [r['name'] for r in fac_rows]
         fac = st.selectbox("Faculty", fac_options)
         submitted = st.form_submit_button("Add")
         if submitted:
@@ -204,7 +204,7 @@ def manage_subjects():
                 fid = None
                 if fac:
                     # find faculty id by name
-                    fid = next((r[0] for r in fac_rows if r[1] == fac), None)
+                    fid = next((r['id'] for r in fac_rows if r['name'] == fac), None)
                 # check uniqueness
                 exists = c.execute(_sql("SELECT 1 FROM subjects WHERE code=?"), (code,)).fetchone()
                 if exists:
