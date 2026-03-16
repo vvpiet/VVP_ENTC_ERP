@@ -74,7 +74,7 @@ def manage_users():
                     if urow:
                         uid = urow[0]
                         cur.execute(
-                            _sql("INSERT INTO faculty (id,name) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name"),
+                            _sql("INSERT INTO faculty (id,name) VALUES (?,?)"),
                             (uid, uname)
                         )
                 conn.commit()
@@ -99,14 +99,19 @@ def manage_users():
             conn = get_connection()
             cur = conn.cursor()
             username_to_delete = df.loc[df['Name'] == to_delete_display, 'username'].values[0]
-            cur.execute(_sql("DELETE FROM attendance WHERE student_id IN (SELECT id FROM users WHERE username=?)"), (username_to_delete,))
-            cur.execute(_sql("DELETE FROM students WHERE id IN (SELECT id FROM users WHERE username=?)"), (username_to_delete,))
-            cur.execute(_sql("DELETE FROM faculty WHERE id IN (SELECT id FROM users WHERE username=?)"), (username_to_delete,))
-            cur.execute(_sql("DELETE FROM users WHERE username=?"), (username_to_delete,))
-            conn.commit()
-            conn.close()
-            st.success(f"Deleted user {to_delete_display}")
-            rerun()
+            id_to_delete = df.loc[df['Name'] == to_delete_display, 'id'].values[0]
+            try:
+                cur.execute(_sql("DELETE FROM attendance WHERE student_id=?"), (id_to_delete,))
+                cur.execute(_sql("DELETE FROM students WHERE id=?"), (id_to_delete,))
+                cur.execute(_sql("DELETE FROM faculty WHERE id=?"), (id_to_delete,))
+                cur.execute(_sql("DELETE FROM users WHERE id=?"), (id_to_delete,))
+                conn.commit()
+                st.success(f"Deleted user {to_delete_display}")
+                rerun()
+            except Exception as e:
+                st.error(f"Delete failed: {str(e)}")
+            finally:
+                conn.close()
 
 
 def manage_students():
