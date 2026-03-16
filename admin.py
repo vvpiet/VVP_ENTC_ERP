@@ -84,26 +84,40 @@ def manage_users():
                 st.error(str(e))
             finally:
                 conn.close()
-    # list users
+    # list users (avoid pandas quirks by using cursor directly)
     conn = get_connection()
-    df = pd.read_sql_query(_sql("SELECT u.id, COALESCE(s.name, f.name, u.username) as display_name, u.username, u.role FROM users u LEFT JOIN students s ON u.id = s.id LEFT JOIN faculty f ON u.id = f.id"), conn)
+    cur = conn.cursor()
+    cur.execute(_sql("SELECT u.id, COALESCE(s.name, f.name, u.username) as display_name, u.username, u.role FROM users u LEFT JOIN students s ON u.id = s.id LEFT JOIN faculty f ON u.id = f.id"))
+    rows = cur.fetchall()
+    users = []
+    for r in rows:
+        users.append({
+            'id': r[0],
+            'Name': r[1],
+            'username': r[2],
+            'role': r[3]
+        })
     conn.close()
-    df = df.rename(columns={'display_name': 'Name'})
-    st.dataframe(df[['id', 'Name', 'role']])
+
+    if users:
+        st.table(users)
+    else:
+        st.info("No users found")
 
     st.markdown("---")
     st.subheader("Delete user")
-    if not df.empty:
-        to_delete_display = st.selectbox("Select user", df['Name'].tolist())
+    if users:
+        display_map = {u['Name']: u for u in users}
+        to_delete_display = st.selectbox("Select user", list(display_map.keys()))
         if st.button("Delete user"):
+            u = display_map[to_delete_display]
             conn = get_connection()
             cur = conn.cursor()
-            username_to_delete = df.loc[df['Name'] == to_delete_display, 'username'].values[0]
             try:
-                cur.execute(_sql("DELETE FROM attendance WHERE student_id IN (SELECT id FROM users WHERE username=?)"), (username_to_delete,))
-                cur.execute(_sql("DELETE FROM students WHERE id IN (SELECT id FROM users WHERE username=?)"), (username_to_delete,))
-                cur.execute(_sql("DELETE FROM faculty WHERE id IN (SELECT id FROM users WHERE username=?)"), (username_to_delete,))
-                cur.execute(_sql("DELETE FROM users WHERE username=?"), (username_to_delete,))
+                cur.execute(_sql("DELETE FROM attendance WHERE student_id=?"), (u['id'],))
+                cur.execute(_sql("DELETE FROM students WHERE id=?"), (u['id'],))
+                cur.execute(_sql("DELETE FROM faculty WHERE id=?"), (u['id'],))
+                cur.execute(_sql("DELETE FROM users WHERE id=?"), (u['id'],))
                 conn.commit()
                 st.success(f"Deleted user {to_delete_display}")
                 rerun()
@@ -176,8 +190,11 @@ def manage_subjects():
         code = st.text_input("Code")
         class_level = st.selectbox("Class Level", ["SY","TY","BTech"], index=0)
         # choose faculty
-        fac_df = pd.read_sql_query(_sql("SELECT id,name FROM faculty"), conn)
-        fac = st.selectbox("Faculty", [''] + fac_df['name'].tolist())
+        cur_fac = conn.cursor()
+        cur_fac.execute(_sql("SELECT id,name FROM faculty"))
+        fac_rows = cur_fac.fetchall()
+        fac_options = [""] + [r[1] for r in fac_rows]
+        fac = st.selectbox("Faculty", fac_options)
         submitted = st.form_submit_button("Add")
         if submitted:
             # validate fields
@@ -186,11 +203,8 @@ def manage_subjects():
             else:
                 fid = None
                 if fac:
-                    fid = fac_df[fac_df['name']==fac]['id'].values[0]
-                    try:
-                        fid = int(fid)
-                    except Exception:
-                        fid = None
+                    # find faculty id by name
+                    fid = next((r[0] for r in fac_rows if r[1] == fac), None)
                 # check uniqueness
                 exists = c.execute(_sql("SELECT 1 FROM subjects WHERE code=?"), (code,)).fetchone()
                 if exists:
