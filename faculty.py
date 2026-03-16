@@ -27,15 +27,18 @@ def take_attendance(user):
         uid = int(user.get('id'))
     except Exception:
         uid = None
+    cur = conn.cursor()
     if uid is not None:
         # try matching by user id first
-        row = conn.execute(_sql("SELECT id FROM faculty WHERE id=?"), (uid,)).fetchone()
+        cur.execute(_sql("SELECT id FROM faculty WHERE id=?"), (uid,))
+        row = cur.fetchone()
         if row:
             fid = row[0]
     if fid is None:
         # fallback: match by username (case-insensitive)
         uname = user.get('username', '').strip().lower()
-        row = conn.execute(_sql("SELECT id FROM faculty WHERE LOWER(name)=?"), (uname,)).fetchone()
+        cur.execute(_sql("SELECT id FROM faculty WHERE LOWER(name)=?"), (uname,))
+        row = cur.fetchone()
         if row:
             fid = row[0]
     # retrieve subjects for this faculty
@@ -94,12 +97,14 @@ def lecture_engagement_register(user):
     except Exception:
         uid = None
     if uid is not None:
-        row = conn.execute(_sql("SELECT id FROM faculty WHERE id=?"), (uid,)).fetchone()
+        cur.execute(_sql("SELECT id FROM faculty WHERE id=?"), (uid,))
+        row = cur.fetchone()
         if row:
             fid = row[0]
     if fid is None:
         uname = user.get('username', '').strip().lower()
-        row = conn.execute(_sql("SELECT id FROM faculty WHERE LOWER(name)=?"), (uname,)).fetchone()
+        cur.execute(_sql("SELECT id FROM faculty WHERE LOWER(name)=?"), (uname,))
+        row = cur.fetchone()
         if row:
             fid = row[0]
 

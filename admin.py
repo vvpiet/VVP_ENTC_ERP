@@ -42,20 +42,21 @@ def manage_users():
             try:
                 create_user(uname, pwd, role)
                 # add corresponding student/faculty entry if needed
+                cur = conn.cursor()
                 if role == 'student':
-                    conn.execute(
+                    # NOTE: psycopg2 requires a cursor for execute (sqlite allows conn.execute)
+                    cur.execute(
                         _sql("INSERT INTO students (id,name,roll) VALUES ((SELECT id FROM users WHERE username=?),?,?) ON CONFLICT(roll) DO NOTHING"),
                         (uname, uname, uname)
                     )
                 elif role == 'faculty':
                     # ensure faculty table uses the same id and name as user
                     # note: username already normalized in create_user
-                    cur = conn.cursor()
                     cur.execute(_sql("SELECT id FROM users WHERE username=?"), (uname,))
                     urow = cur.fetchone()
                     if urow:
                         uid = urow[0]
-                        conn.execute(
+                        cur.execute(
                             _sql("INSERT INTO faculty (id,name) VALUES (?,?) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name"),
                             (uid, uname)
                         )
@@ -185,9 +186,10 @@ def manage_subjects():
     if not df.empty:
         to_delete = st.selectbox("Select subject code", df['code'].tolist())
         if st.button("Delete subject"):
-            conn.execute(_sql("DELETE FROM attendance WHERE subject_id IN (SELECT id FROM subjects WHERE code=?)"), (to_delete,))
-            conn.execute(_sql("DELETE FROM timetable WHERE subject_id IN (SELECT id FROM subjects WHERE code=?)"), (to_delete,))
-            conn.execute(_sql("DELETE FROM subjects WHERE code=?"), (to_delete,))
+            cur = conn.cursor()
+            cur.execute(_sql("DELETE FROM attendance WHERE subject_id IN (SELECT id FROM subjects WHERE code=?)"), (to_delete,))
+            cur.execute(_sql("DELETE FROM timetable WHERE subject_id IN (SELECT id FROM subjects WHERE code=?)"), (to_delete,))
+            cur.execute(_sql("DELETE FROM subjects WHERE code=?"), (to_delete,))
             conn.commit()
             st.success(f"Deleted subject {to_delete}")
     conn.close()
