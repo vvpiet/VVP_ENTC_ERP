@@ -101,13 +101,13 @@ def lecture_engagement_register(user):
         cur.execute(_sql("SELECT id FROM faculty WHERE id=?"), (uid,))
         row = cur.fetchone()
         if row:
-            fid = row[0]
+            fid = row['id'] if isinstance(row, dict) else row[0]
     if fid is None:
         uname = user.get('username', '').strip().lower()
         cur.execute(_sql("SELECT id FROM faculty WHERE LOWER(name)=?"), (uname,))
         row = cur.fetchone()
         if row:
-            fid = row[0]
+            fid = row['id'] if isinstance(row, dict) else row[0]
 
     if fid is None:
         st.info("Faculty record not found. Ask admin to create your faculty entry.")
