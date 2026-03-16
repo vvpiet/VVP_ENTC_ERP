@@ -72,7 +72,8 @@ def manage_users():
                     cur.execute(_sql("SELECT id FROM users WHERE LOWER(username)=?"), (uname_lower,))
                     urow = cur.fetchone()
                     if urow:
-                        uid = urow[0]
+                        # psycopg2 returns dict-like rows; sqlite returns tuple-like
+                        uid = urow.get('id') if isinstance(urow, dict) else urow[0]
                         cur.execute(
                             _sql("INSERT INTO faculty (id,name) VALUES (?,?)"),
                             (uid, uname)
@@ -195,6 +196,9 @@ def manage_subjects():
         fac_rows = cur_fac.fetchall()
         fac_options = [""] + [r['name'] for r in fac_rows]
         fac = st.selectbox("Faculty", fac_options)
+        with st.expander("Debug: faculty lookup", expanded=False):
+            st.write(f"Faculty rows count: {len(fac_rows)}")
+            st.write([r['name'] for r in fac_rows])
         submitted = st.form_submit_button("Add")
         if submitted:
             # validate fields
