@@ -215,16 +215,29 @@ def manage_subjects():
                         c.execute(_sql("INSERT INTO subjects (name,code,faculty_id,class_level) VALUES (?,?,?,?)"), (name, code, fid, class_level))
                         conn.commit()
                         st.success("Subject added")
+                        rerun()
                     except Exception as e:
                         st.error(str(e))
-    # show subjects
+    # Close and reopen connection to get fresh data
+    conn.close()
+    conn = get_connection()
+    
+    # show subjects with fresh data
     df = pd.read_sql_query(_sql("SELECT s.id,s.name,s.code,s.class_level,f.name as faculty FROM subjects s LEFT JOIN faculty f ON s.faculty_id=f.id"), conn)
+    
     if not df.empty:
         st.write("### Subject Assignments:")
-        # Rename columns for clarity and fill null faculty values
-        display_df = df.copy()
-        display_df.columns = ['ID', 'Name', 'Code', 'Class', 'Faculty']
-        display_df['Faculty'] = display_df['Faculty'].fillna('Unassigned')
+        # Create display dataframe with proper column names
+        display_data = []
+        for idx, row in df.iterrows():
+            display_data.append({
+                'ID': int(row['id']),
+                'Name': str(row['name']),
+                'Code': str(row['code']),
+                'Class': str(row['class_level']),
+                'Faculty': str(row['faculty']) if pd.notna(row['faculty']) else 'Unassigned'
+            })
+        display_df = pd.DataFrame(display_data)
         st.dataframe(display_df, use_container_width=True)
     else:
         st.info("No subjects found")
@@ -247,18 +260,23 @@ def manage_subjects():
             cur.execute(_sql("UPDATE subjects SET faculty_id=? WHERE code=?"), (fid, to_update))
             conn.commit()
             st.success(f"Updated subject {to_update} assigned to {new_fac if new_fac else 'unassigned'}")
+            rerun()
 
     st.markdown("---")
     st.subheader("Delete subject")
     if not df.empty:
         to_delete = st.selectbox("Select subject code", df['code'].tolist())
         if st.button("Delete subject"):
-            cur = conn.cursor()
-            cur.execute(_sql("DELETE FROM attendance WHERE subject_id IN (SELECT id FROM subjects WHERE code=?)"), (to_delete,))
-            cur.execute(_sql("DELETE FROM timetable WHERE subject_id IN (SELECT id FROM subjects WHERE code=?)"), (to_delete,))
-            cur.execute(_sql("DELETE FROM subjects WHERE code=?"), (to_delete,))
-            conn.commit()
-            st.success(f"Deleted subject {to_delete}")
+            try:
+                cur = conn.cursor()
+                cur.execute(_sql("DELETE FROM attendance WHERE subject_id IN (SELECT id FROM subjects WHERE code=?)"), (to_delete,))
+                cur.execute(_sql("DELETE FROM timetable WHERE subject_id IN (SELECT id FROM subjects WHERE code=?)"), (to_delete,))
+                cur.execute(_sql("DELETE FROM subjects WHERE code=?"), (to_delete,))
+                conn.commit()
+                st.success(f"Deleted subject {to_delete}")
+                rerun()
+            except Exception as e:
+                st.error(f"Delete failed: {e}")
     conn.close()
 
 
