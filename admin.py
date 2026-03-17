@@ -226,21 +226,43 @@ def manage_subjects():
     
     if not df.empty and len(df) > 0:
         st.write("### Subject Assignments:")
-        # Create display dataframe with proper column names
+        # Create display dataframe with proper column names and filter out header rows
         display_data = []
         for idx, row in df.iterrows():
-            display_data.append({
-                'ID': row['id'],
-                'Name': str(row['name']),
-                'Code': str(row['code']),
-                'Class': str(row['class_level']),
-                'Faculty': str(row['faculty']) if pd.notna(row['faculty']) else 'Unassigned'
-            })
+            # Skip rows where id is a string like 'id' (header row)
+            id_val = row['id']
+            if str(id_val).lower() in ['id', 'nan', 'none']:
+                continue
+            
+            try:
+                # Ensure proper type conversion
+                id_int = int(id_val)
+                name_str = str(row['name']).strip()
+                code_str = str(row['code']).strip()
+                class_str = str(row['class_level']).strip() if pd.notna(row['class_level']) else 'N/A'
+                faculty_str = str(row['faculty']).strip() if pd.notna(row['faculty']) else 'Unassigned'
+                
+                # Skip if any critical field is placeholder text
+                if name_str.lower() in ['name', 'nan', 'none', '']:
+                    continue
+                if code_str.lower() in ['code', 'nan', 'none', '']:
+                    continue
+                    
+                display_data.append({
+                    'ID': id_int,
+                    'Name': name_str,
+                    'Code': code_str,
+                    'Class': class_str,
+                    'Faculty': faculty_str
+                })
+            except (ValueError, TypeError):
+                continue
+        
         if display_data:
             display_df = pd.DataFrame(display_data)
             st.dataframe(display_df, use_container_width=True)
         else:
-            st.info("No subjects found")
+            st.info("No valid subjects found")
     else:
         st.info("No subjects found")
 
