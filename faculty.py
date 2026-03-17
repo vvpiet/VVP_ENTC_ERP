@@ -33,14 +33,14 @@ def take_attendance(user):
         cur.execute(_sql("SELECT id FROM faculty WHERE id=?"), (uid,))
         row = cur.fetchone()
         if row:
-            fid = row[0]
+            fid = row['id'] if isinstance(row, dict) else row[0]
     if fid is None:
         # fallback: match by username (case-insensitive)
         uname = user.get('username', '').strip().lower()
         cur.execute(_sql("SELECT id FROM faculty WHERE LOWER(name)=?"), (uname,))
         row = cur.fetchone()
         if row:
-            fid = row[0]
+            fid = row['id'] if isinstance(row, dict) else row[0]
     # retrieve subjects for this faculty
     if fid is not None:
         df = pd.read_sql_query(
