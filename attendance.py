@@ -5,11 +5,17 @@ from datetime import date
 
 
 def mark_attendance(subject_id):
-    # ensure integer
+    # ensure integer and validate
     try:
         subject_id = int(subject_id)
-    except Exception:
-        pass
+    except (ValueError, TypeError):
+        st.error(f"Invalid subject ID: {subject_id}")
+        return
+    
+    if subject_id <= 0:
+        st.error("Subject ID must be positive")
+        return
+    
     conn = get_connection()
     c = conn.cursor()
     # get subject class_level by id

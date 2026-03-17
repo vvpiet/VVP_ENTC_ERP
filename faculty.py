@@ -57,11 +57,17 @@ def take_attendance(user):
     # build dropdown labels including class
     subject_label = None
     if not df.empty:
-        labels = df.apply(lambda r: f"{r['name']} ({r.get('class_level','')})", axis=1)
+        # Filter out any rows with invalid id values
+        df_clean = df[df['id'].apply(lambda x: str(x).isdigit())].copy()
+        if df_clean.empty:
+            st.error("No valid subjects found")
+            conn.close()
+            return
+        labels = df_clean.apply(lambda r: f"{r['name']} ({r.get('class_level','')})", axis=1)
         sel = st.selectbox("Subject", labels)
         # map back to id
         idx = labels.tolist().index(sel)
-        subject_id = df.iloc[idx]['id']
+        subject_id = int(df_clean.iloc[idx]['id'])
     else:
         subject_id = None
     subject = subject_id
