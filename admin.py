@@ -194,7 +194,8 @@ def manage_subjects():
         cur_fac = conn.cursor()
         cur_fac.execute(_sql("SELECT id,name FROM faculty"))
         fac_rows = cur_fac.fetchall()
-        fac_options = [""] + [r['name'] for r in fac_rows]
+        # Handle both dict (Postgres) and tuple (SQLite) rows
+        fac_options = [""] + [r['name'] if isinstance(r, dict) else r[1] for r in fac_rows]
         fac = st.selectbox("Faculty", fac_options)
         submitted = st.form_submit_button("Add")
         if submitted:
@@ -204,8 +205,12 @@ def manage_subjects():
             else:
                 fid = None
                 if fac:
-                    # find faculty id by name
-                    fid = next((r['id'] for r in fac_rows if r['name'] == fac), None)
+                    # find faculty id by name - handle both dict (Postgres) and tuple (SQLite) rows
+                    for r in fac_rows:
+                        r_name = r['name'] if isinstance(r, dict) else r[1]
+                        if r_name == fac:
+                            fid = r['id'] if isinstance(r, dict) else r[0]
+                            break
                 # check uniqueness
                 c.execute(_sql("SELECT 1 FROM subjects WHERE code=?"), (code,))
                 exists = c.fetchone()
@@ -215,56 +220,52 @@ def manage_subjects():
                     try:
                         c.execute(_sql("INSERT INTO subjects (name,code,faculty_id,class_level) VALUES (?,?,?,?)"), (name, code, fid, class_level))
                         conn.commit()
-                        st.success("Subject added")
-                        # Use session state to trigger rerun after rendering
+                        
+                        # Verify insertion by querying back
+                        c.execute(_sql("SELECT COUNT(*) as cnt FROM subjects WHERE code=?"), (code,))
+                        result = c.fetchone()
+                        count = result['cnt'] if isinstance(result, dict) else result[0]
+                        
+                        if count > 0:
+                            st.success(f"Subject '{name}' added successfully")
+                        else:
+                            st.warning("Subject may not have been saved properly")
+                        
                         st.session_state.subject_action_done = True
                     except Exception as e:
-                        st.error(str(e))
+                        st.error(f"Insert failed: {str(e)}")
     
     # show subjects with same connection
-    df = pd.read_sql_query(_sql("SELECT s.id,s.name,s.code,s.class_level,f.name as faculty FROM subjects s LEFT JOIN faculty f ON s.faculty_id=f.id"), conn)
+    try:
+        df = pd.read_sql_query(_sql("SELECT s.id,s.name,s.code,s.class_level,f.name as faculty FROM subjects s LEFT JOIN faculty f ON s.faculty_id=f.id ORDER BY s.id"), conn)
+    except Exception as e:
+        st.error(f"Failed to fetch subjects: {e}")
+        conn.close()
+        return
     
-    if not df.empty and len(df) > 0:
-        st.write("### Subject Assignments:")
-        # Create display dataframe with proper column names and filter out header rows
-        display_data = []
-        for idx, row in df.iterrows():
-            # Skip rows where id is a string like 'id' (header row)
-            id_val = row['id']
-            if str(id_val).lower() in ['id', 'nan', 'none']:
-                continue
-            
-            try:
-                # Ensure proper type conversion
-                id_int = int(id_val)
-                name_str = str(row['name']).strip()
-                code_str = str(row['code']).strip()
-                class_str = str(row['class_level']).strip() if pd.notna(row['class_level']) else 'N/A'
-                faculty_str = str(row['faculty']).strip() if pd.notna(row['faculty']) else 'Unassigned'
-                
-                # Skip if any critical field is placeholder text
-                if name_str.lower() in ['name', 'nan', 'none', '']:
-                    continue
-                if code_str.lower() in ['code', 'nan', 'none', '']:
-                    continue
-                    
-                display_data.append({
-                    'ID': id_int,
-                    'Name': name_str,
-                    'Code': code_str,
-                    'Class': class_str,
-                    'Faculty': faculty_str
-                })
-            except (ValueError, TypeError):
-                continue
-        
-        if display_data:
-            display_df = pd.DataFrame(display_data)
-            st.dataframe(display_df, use_container_width=True)
-        else:
-            st.info("No valid subjects found")
+    st.write("### Subject Assignments:")
+    if df is None or df.empty:
+        st.info("No subjects found in database")
     else:
-        st.info("No subjects found")
+        # Show debug information
+        st.write(f"✓ Retrieved {len(df)} rows from database")
+        
+        # Add debug expander to show raw data
+        with st.expander("Debug: Show Raw Query Results"):
+            st.json({
+                'shape': str(df.shape),
+                'columns': list(df.columns),
+                'dtypes': str(df.dtypes.to_dict()),
+                'first_row': df.iloc[0].to_dict() if len(df) > 0 else None
+            })
+        
+        # Simple display - just rename columns and show
+        display_df = df.copy()
+        display_df.columns = ['ID', 'Name', 'Code', 'Class', 'Faculty']
+        display_df['Faculty'] = display_df['Faculty'].fillna('Unassigned')
+        display_df = display_df.astype(str)  # Convert all to string for display
+        
+        st.dataframe(display_df, use_container_width=True)
 
     st.markdown("---")
     st.subheader("Update subject faculty")
@@ -274,12 +275,18 @@ def manage_subjects():
         cur_fac = conn.cursor()
         cur_fac.execute(_sql("SELECT id,name FROM faculty"))
         fac_rows = cur_fac.fetchall()
-        fac_options = [""] + [r['name'] for r in fac_rows]
+        # Handle both dict (Postgres) and tuple (SQLite) rows
+        fac_options = [""] + [r['name'] if isinstance(r, dict) else r[1] for r in fac_rows]
         new_fac = st.selectbox("Assign to faculty", fac_options, key="update_faculty")
         if st.button("Update subject"):
             fid = None
             if new_fac:
-                fid = next((r['id'] for r in fac_rows if r['name'] == new_fac), None)
+                # find faculty id by name - handle both dict (Postgres) and tuple (SQLite) rows
+                for r in fac_rows:
+                    r_name = r['name'] if isinstance(r, dict) else r[1]
+                    if r_name == new_fac:
+                        fid = r['id'] if isinstance(r, dict) else r[0]
+                        break
             try:
                 cur = conn.cursor()
                 cur.execute(_sql("UPDATE subjects SET faculty_id=? WHERE code=?"), (fid, to_update))
