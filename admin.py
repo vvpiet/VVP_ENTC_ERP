@@ -222,6 +222,25 @@ def manage_subjects():
     st.dataframe(df)
 
     st.markdown("---")
+    st.subheader("Update subject faculty")
+    if not df.empty:
+        to_update = st.selectbox("Select subject to update", df['code'].tolist())
+        # get faculty options
+        cur_fac = conn.cursor()
+        cur_fac.execute(_sql("SELECT id,name FROM faculty"))
+        fac_rows = cur_fac.fetchall()
+        fac_options = [""] + [r['name'] for r in fac_rows]
+        new_fac = st.selectbox("Assign to faculty", fac_options, key="update_faculty")
+        if st.button("Update subject"):
+            fid = None
+            if new_fac:
+                fid = next((r['id'] for r in fac_rows if r['name'] == new_fac), None)
+            cur = conn.cursor()
+            cur.execute(_sql("UPDATE subjects SET faculty_id=? WHERE code=?"), (fid, to_update))
+            conn.commit()
+            st.success(f"Updated subject {to_update} assigned to {new_fac if new_fac else 'unassigned'}")
+
+    st.markdown("---")
     st.subheader("Delete subject")
     if not df.empty:
         to_delete = st.selectbox("Select subject code", df['code'].tolist())
