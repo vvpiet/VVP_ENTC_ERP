@@ -230,15 +230,21 @@ def manage_subjects():
         # Create display dataframe with proper column names
         display_data = []
         for idx, row in df.iterrows():
+            # Skip if this is a header row
+            if str(row['id']).lower() == 'id':
+                continue
             display_data.append({
-                'ID': int(row['id']),
+                'ID': row['id'],
                 'Name': str(row['name']),
                 'Code': str(row['code']),
                 'Class': str(row['class_level']),
                 'Faculty': str(row['faculty']) if pd.notna(row['faculty']) else 'Unassigned'
             })
-        display_df = pd.DataFrame(display_data)
-        st.dataframe(display_df, use_container_width=True)
+        if display_data:
+            display_df = pd.DataFrame(display_data)
+            st.dataframe(display_df, use_container_width=True)
+        else:
+            st.info("No subjects found")
     else:
         st.info("No subjects found")
 
