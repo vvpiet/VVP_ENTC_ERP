@@ -184,6 +184,7 @@ def manage_subjects():
     st.subheader("Subjects")
     conn = get_connection()
     c = conn.cursor()
+    
     # form for adding new subject
     with st.form("add_subject"):
         name = st.text_input("Name")
@@ -215,24 +216,19 @@ def manage_subjects():
                         c.execute(_sql("INSERT INTO subjects (name,code,faculty_id,class_level) VALUES (?,?,?,?)"), (name, code, fid, class_level))
                         conn.commit()
                         st.success("Subject added")
-                        rerun()
+                        # Use session state to trigger rerun after rendering
+                        st.session_state.subject_action_done = True
                     except Exception as e:
                         st.error(str(e))
-    # Close and reopen connection to get fresh data
-    conn.close()
-    conn = get_connection()
     
-    # show subjects with fresh data
+    # show subjects with same connection
     df = pd.read_sql_query(_sql("SELECT s.id,s.name,s.code,s.class_level,f.name as faculty FROM subjects s LEFT JOIN faculty f ON s.faculty_id=f.id"), conn)
     
-    if not df.empty:
+    if not df.empty and len(df) > 0:
         st.write("### Subject Assignments:")
         # Create display dataframe with proper column names
         display_data = []
         for idx, row in df.iterrows():
-            # Skip if this is a header row
-            if str(row['id']).lower() == 'id':
-                continue
             display_data.append({
                 'ID': row['id'],
                 'Name': str(row['name']),
@@ -250,7 +246,7 @@ def manage_subjects():
 
     st.markdown("---")
     st.subheader("Update subject faculty")
-    if not df.empty:
+    if not df.empty and len(df) > 0:
         to_update = st.selectbox("Select subject to update", df['code'].tolist())
         # get faculty options
         cur_fac = conn.cursor()
@@ -262,28 +258,39 @@ def manage_subjects():
             fid = None
             if new_fac:
                 fid = next((r['id'] for r in fac_rows if r['name'] == new_fac), None)
-            cur = conn.cursor()
-            cur.execute(_sql("UPDATE subjects SET faculty_id=? WHERE code=?"), (fid, to_update))
-            conn.commit()
-            st.success(f"Updated subject {to_update} assigned to {new_fac if new_fac else 'unassigned'}")
-            rerun()
+            try:
+                cur = conn.cursor()
+                cur.execute(_sql("UPDATE subjects SET faculty_id=? WHERE code=?"), (fid, to_update))
+                conn.commit()
+                st.success(f"Updated subject {to_update} assigned to {new_fac if new_fac else 'unassigned'}")
+                st.session_state.subject_action_done = True
+            except Exception as e:
+                st.error(f"Update failed: {e}")
 
     st.markdown("---")
     st.subheader("Delete subject")
-    if not df.empty:
+    if not df.empty and len(df) > 0:
         to_delete = st.selectbox("Select subject code", df['code'].tolist())
         if st.button("Delete subject"):
             try:
                 cur = conn.cursor()
+                # Delete in correct order to handle foreign keys
                 cur.execute(_sql("DELETE FROM attendance WHERE subject_id IN (SELECT id FROM subjects WHERE code=?)"), (to_delete,))
                 cur.execute(_sql("DELETE FROM timetable WHERE subject_id IN (SELECT id FROM subjects WHERE code=?)"), (to_delete,))
+                cur.execute(_sql("DELETE FROM ler WHERE subject_id IN (SELECT id FROM subjects WHERE code=?)"), (to_delete,))
                 cur.execute(_sql("DELETE FROM subjects WHERE code=?"), (to_delete,))
                 conn.commit()
                 st.success(f"Deleted subject {to_delete}")
-                rerun()
+                st.session_state.subject_action_done = True
             except Exception as e:
                 st.error(f"Delete failed: {e}")
+    
     conn.close()
+    
+    # Rerun after all operations complete if an action was done
+    if st.session_state.get('subject_action_done', False):
+        st.session_state.subject_action_done = False
+        rerun()
 
 
 def manage_timetable():
