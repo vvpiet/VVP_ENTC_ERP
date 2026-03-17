@@ -18,7 +18,7 @@ def mark_attendance(subject_id):
     if not res:
         st.error("Subject not found")
         return
-    cls = res[0]
+    cls = res['class_level'] if isinstance(res, dict) else res[0]
     # get students in that class (if class defined)
     if cls:
         students = pd.read_sql_query(_sql("SELECT id,name,roll FROM students WHERE class_level=?"), conn, params=(cls,))

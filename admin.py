@@ -219,7 +219,13 @@ def manage_subjects():
                         st.error(str(e))
     # show subjects
     df = pd.read_sql_query(_sql("SELECT s.id,s.name,s.code,s.class_level,f.name as faculty FROM subjects s LEFT JOIN faculty f ON s.faculty_id=f.id"), conn)
-    st.dataframe(df)
+    if not df.empty:
+        st.write("### Subject Assignments:")
+        for idx, row in df.iterrows():
+            faculty_name = row['faculty'] if row['faculty'] else "Unassigned"
+            st.write(f"**ID:** {row['id']} | **Name:** {row['name']} | **Code:** {row['code']} | **Class:** {row['class_level']} | **Faculty:** {faculty_name}")
+    else:
+        st.info("No subjects found")
 
     st.markdown("---")
     st.subheader("Update subject faculty")

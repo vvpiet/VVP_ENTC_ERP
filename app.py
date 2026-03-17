@@ -1,5 +1,5 @@
 import streamlit as st
-from db import initialize_db
+from db import initialize_db, get_connection, _sql
 from auth import validate_login, hash_password, create_user
 from admin import admin_dashboard
 from faculty import faculty_portal
@@ -61,22 +61,30 @@ def login():
             rerun()
         else:
             st.error("Invalid credentials")
-    with st.expander("Create admin account"):
-        au = st.text_input("Admin username", key='au')
-        ap = st.text_input("Admin password", type='password', key='ap')
-        if st.button("Create", key='create_admin'):
-            try:
-                create_user(au, ap, 'admin')
-                # automatically log in the new admin
-                user = validate_login(au, ap)
-                if user:
-                    st.session_state.logged_in = True
-                    st.session_state.user = user
-                    rerun()
-                else:
-                    st.success("Admin created, please login")
-            except Exception as e:
-                st.error(str(e))
+    # Only show admin creation if no admin exists
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(_sql("SELECT COUNT(*) FROM users WHERE role='admin'"))
+    res = cur.fetchone()
+    admin_count = res[0] if isinstance(res, tuple) else res['count'] if isinstance(res, dict) else 0
+    conn.close()
+    if admin_count == 0:
+        with st.expander("Create admin account"):
+            au = st.text_input("Admin username", key='au')
+            ap = st.text_input("Admin password", type='password', key='ap')
+            if st.button("Create", key='create_admin'):
+                try:
+                    create_user(au, ap, 'admin')
+                    # automatically log in the new admin
+                    user = validate_login(au, ap)
+                    if user:
+                        st.session_state.logged_in = True
+                        st.session_state.user = user
+                        rerun()
+                    else:
+                        st.success("Admin created, please login")
+                except Exception as e:
+                    st.error(str(e))
 
 if __name__ == "__main__":
     main()
