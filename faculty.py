@@ -229,6 +229,7 @@ def faculty_materials(user):
 
     # resolve faculty id and ensure a faculty record exists for this user
     conn = get_connection()
+    cur = conn.cursor()
     fid = _ensure_faculty_record(user, conn)
 
     if fid is None:
