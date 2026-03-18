@@ -6,12 +6,14 @@ from attendance import mark_attendance
 
 def faculty_portal(user):
     st.title(f"Faculty Portal - {user['username']}")
-    menu = ["Take Attendance","LER","View Attendance","Timetable"]
+    menu = ["Take Attendance","LER","Notes & Assignments","View Attendance","Timetable"]
     choice = st.sidebar.selectbox("Menu", menu)
     if choice == "Take Attendance":
         take_attendance(user)
     elif choice == "LER":
         lecture_engagement_register(user)
+    elif choice == "Notes & Assignments":
+        faculty_materials(user)
     elif choice == "View Attendance":
         view_attendance(user)
     elif choice == "Timetable":
@@ -217,6 +219,116 @@ def lecture_engagement_register(user):
     else:
         st.info("No previous LER entries")
     
+    conn.close()
+
+
+def faculty_materials(user):
+    """Allow faculty to upload notes and assignments for their subjects."""
+    st.subheader("Notes & Assignments")
+
+    # resolve faculty id
+    conn = get_connection()
+    cur = conn.cursor()
+    fid = None
+    try:
+        uid = int(user.get('id'))
+    except Exception:
+        uid = None
+    if uid is not None:
+        cur.execute(_sql("SELECT id FROM faculty WHERE id=?"), (uid,))
+        row = cur.fetchone()
+        if row:
+            fid = row['id'] if isinstance(row, dict) else row[0]
+    if fid is None:
+        uname = user.get('username', '').strip().lower()
+        cur.execute(_sql("SELECT id FROM faculty WHERE LOWER(name)=?"), (uname,))
+        row = cur.fetchone()
+        if row:
+            fid = row['id'] if isinstance(row, dict) else row[0]
+
+    if fid is None:
+        st.error("Faculty record not found. Ask admin to create your faculty entry.")
+        conn.close()
+        return
+
+    # fetch subjects for this faculty
+    cur.execute(_sql("SELECT id,name,code,class_level FROM subjects WHERE faculty_id=?"), (fid,))
+    subj_rows = cur.fetchall()
+    subjects = []
+    for row in subj_rows:
+        subj = row if isinstance(row, dict) else {'id': row[0], 'name': row[1], 'code': row[2], 'class_level': row[3]}
+        subjects.append(subj)
+
+    if not subjects:
+        st.info("No subjects assigned. Ask admin to assign subjects.")
+        conn.close()
+        return
+
+    subj_map = {f"{s['name']} ({s.get('class_level','')})": s for s in subjects}
+    sel = st.selectbox("Subject", list(subj_map.keys()))
+    subject = subj_map[sel]
+
+    # upload section
+    st.markdown("---")
+    st.write("### Upload Notes")
+    note_title = st.text_input("Title")
+    note_file = st.file_uploader("Select file", type=['pdf','docx','txt','pptx'], key='note_upload')
+    if st.button("Upload Note"):
+        if not note_title or not note_file:
+            st.error("Title and file are required")
+        else:
+            import os
+            os.makedirs('uploads', exist_ok=True)
+            filename = f"{subject['code']}_note_{int(pd.Timestamp('now').timestamp())}_{note_file.name}"
+            path = os.path.join('uploads', filename)
+            with open(path, 'wb') as f:
+                f.write(note_file.getbuffer())
+            cur.execute(_sql("INSERT INTO notes (subject_id,title,filename) VALUES (?,?,?)"),
+                        (subject['id'], note_title, filename))
+            conn.commit()
+            st.success("Note uploaded")
+
+    st.markdown("---")
+    st.write("### Upload Assignment")
+    assn_title = st.text_input("Assignment title", key='assn_title')
+    due_date = st.date_input("Due date")
+    assn_file = st.file_uploader("Select assignment file", type=['pdf','docx','txt','pptx'], key='assn_upload')
+    if st.button("Upload Assignment"):
+        if not assn_title or not assn_file:
+            st.error("Title and file are required")
+        else:
+            import os
+            os.makedirs('uploads', exist_ok=True)
+            filename = f"{subject['code']}_assn_{int(pd.Timestamp('now').timestamp())}_{assn_file.name}"
+            path = os.path.join('uploads', filename)
+            with open(path, 'wb') as f:
+                f.write(assn_file.getbuffer())
+            cur.execute(_sql("INSERT INTO assignments (subject_id,title,filename,due_date) VALUES (?,?,?,?)"),
+                        (subject['id'], assn_title, filename, str(due_date)))
+            conn.commit()
+            st.success("Assignment uploaded")
+
+    # show existing materials for this subject
+    st.markdown("---")
+    st.write("### Existing Notes")
+    cur.execute(_sql("SELECT id,title,filename,created_at FROM notes WHERE subject_id=? ORDER BY created_at DESC"), (subject['id'],))
+    notes = cur.fetchall()
+    for n in notes:
+        n = n if isinstance(n, dict) else {'id': n[0], 'title': n[1], 'filename': n[2], 'created_at': n[3]}
+        if st.button(f"Download: {n['title']}", key=f"note_{n['id']}"):
+            with open(os.path.join('uploads', n['filename']), 'rb') as f:
+                st.download_button(f"Download {n['title']}", data=f.read(), file_name=n['filename'])
+
+    st.markdown("---")
+    st.write("### Existing Assignments")
+    cur.execute(_sql("SELECT id,title,filename,due_date,created_at FROM assignments WHERE subject_id=? ORDER BY created_at DESC"), (subject['id'],))
+    assignments = cur.fetchall()
+    for a in assignments:
+        a = a if isinstance(a, dict) else {'id': a[0], 'title': a[1], 'filename': a[2], 'due_date': a[3], 'created_at': a[4]}
+        if st.button(f"Download (due {a.get('due_date')}): {a['title']}", key=f"assn_{a['id']}"):
+            with open(os.path.join('uploads', a['filename']), 'rb') as f:
+                st.download_button(f"Download {a['title']}", data=f.read(), file_name=a['filename'])
+
     conn.close()
 
 

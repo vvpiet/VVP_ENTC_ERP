@@ -50,6 +50,9 @@ def manage_users():
         uname = st.text_input("Username")
         pwd = st.text_input("Password", type='password')
         role = st.selectbox("Role", ["admin","faculty","student"])
+        student_class = None
+        if role == 'student':
+            student_class = st.selectbox("Student class", ["SY","TY","BTech"], index=0)
         submitted = st.form_submit_button("Create")
         if submitted:
             from auth import create_user
@@ -62,8 +65,8 @@ def manage_users():
                 if role == 'student':
                     # NOTE: psycopg2 requires a cursor for execute (sqlite allows conn.execute)
                     cur.execute(
-                        _sql("INSERT INTO students (id,name,roll) VALUES (?,?,?) ON CONFLICT(roll) DO NOTHING"),
-                        (uid, uname, uname)
+                        _sql("INSERT INTO students (id,name,roll,class_level) VALUES (?,?,?,?) ON CONFLICT(roll) DO NOTHING"),
+                        (uid, uname, uname, student_class)
                     )
                     st.write(f"Inserted student row for user id {uid}")
                 elif role == 'faculty':

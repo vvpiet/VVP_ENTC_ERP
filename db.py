@@ -167,6 +167,29 @@ def initialize_db():
         )
         ''')
 
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS notes (
+            id SERIAL PRIMARY KEY,
+            subject_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(subject_id) REFERENCES subjects(id)
+        )
+        ''')
+
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS assignments (
+            id SERIAL PRIMARY KEY,
+            subject_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            due_date DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(subject_id) REFERENCES subjects(id)
+        )
+        ''')
+
         # Ensure we commit DDL in Postgres right away so tables don't disappear if
         # a later statement fails (e.g. ALTER/UPDATE during migrations).
         conn.commit()
@@ -258,6 +281,29 @@ def initialize_db():
             absent_rolls TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(faculty_id) REFERENCES faculty(id),
+            FOREIGN KEY(subject_id) REFERENCES subjects(id)
+        )
+        ''')
+
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(subject_id) REFERENCES subjects(id)
+        )
+        ''')
+
+        c.execute('''
+        CREATE TABLE IF NOT EXISTS assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            due_date TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(subject_id) REFERENCES subjects(id)
         )
         ''')

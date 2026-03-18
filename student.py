@@ -6,12 +6,14 @@ from reports import generate_student_report
 
 def student_portal(user):
     st.title(f"Student Portal - {user['username']}")
-    menu = ["My Attendance","Timetable","Alerts","Get PDF Report"]
+    menu = ["My Attendance","Timetable","Resources","Alerts","Get PDF Report"]
     choice = st.sidebar.selectbox("Menu", menu)
     if choice == "My Attendance":
         student_attendance(user)
     elif choice == "Timetable":
         show_timetable()
+    elif choice == "Resources":
+        show_resources(user)
     elif choice == "Alerts":
         show_alerts(user)
     elif choice == "Get PDF Report":
@@ -52,3 +54,71 @@ def show_alerts(user):
         _sql("SELECT message,created_at FROM alerts a JOIN users u ON u.id=a.student_id WHERE u.username=?"), conn, params=(user['username'],))
     conn.close()
     st.dataframe(df)
+
+
+def show_resources(user):
+    """Show notes and assignments relevant to the student's class."""
+    conn = get_connection()
+    c = conn.cursor()
+    # Determine the student's class level
+    c.execute(_sql("SELECT s.class_level FROM students s JOIN users u ON u.id=s.id WHERE u.username=?"), (user['username'],))
+    row = c.fetchone()
+    if not row:
+        conn.close()
+        st.info("No student record found. Contact admin.")
+        return
+    class_level = row['class_level'] if isinstance(row, dict) else row[0]
+
+    # Fetch notes and assignments for this class
+    c.execute(_sql("SELECT n.id,n.title,n.filename,n.created_at,s.name AS subject FROM notes n JOIN subjects s ON n.subject_id=s.id WHERE s.class_level=? ORDER BY n.created_at DESC"), (class_level,))
+    notes = c.fetchall()
+
+    c.execute(_sql("SELECT a.id,a.title,a.filename,a.due_date,a.created_at,s.name AS subject FROM assignments a JOIN subjects s ON a.subject_id=s.id WHERE s.class_level=? ORDER BY a.created_at DESC"), (class_level,))
+    assignments = c.fetchall()
+
+    conn.close()
+
+    st.subheader(f"Resources for {class_level}")
+
+    if not notes and not assignments:
+        st.info("No resources found for your class.")
+        return
+
+    if notes:
+        st.write("### Notes")
+        for n in notes:
+            n = n if isinstance(n, dict) else {
+                'id': n[0],
+                'title': n[1],
+                'filename': n[2],
+                'created_at': n[3],
+                'subject': n[4]
+            }
+            label = f"{n['title']} ({n['subject']})"
+            if st.button(f"Download: {label}", key=f"note_{n['id']}"):
+                try:
+                    with open(f"uploads/{n['filename']}", 'rb') as f:
+                        st.download_button(f"Download {label}", data=f.read(), file_name=n['filename'])
+                except FileNotFoundError:
+                    st.error("File not found on server. Contact faculty to re-upload.")
+
+    if assignments:
+        st.markdown("---")
+        st.write("### Assignments")
+        for a in assignments:
+            a = a if isinstance(a, dict) else {
+                'id': a[0],
+                'title': a[1],
+                'filename': a[2],
+                'due_date': a[3],
+                'created_at': a[4],
+                'subject': a[5]
+            }
+            due = a.get('due_date') or 'No due date'
+            label = f"{a['title']} ({a['subject']} - due {due})"
+            if st.button(f"Download: {label}", key=f"assn_{a['id']}"):
+                try:
+                    with open(f"uploads/{a['filename']}", 'rb') as f:
+                        st.download_button(f"Download {label}", data=f.read(), file_name=a['filename'])
+                except FileNotFoundError:
+                    st.error("File not found on server. Contact faculty to re-upload.")
