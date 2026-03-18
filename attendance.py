@@ -50,7 +50,7 @@ def mark_attendance(subject_id):
         st.write("Tick checkbox for present students. Unticked will be marked absent.")
         for student in students_data:
             key = f"stu_{student['id']}"
-            checked = st.checkbox(f\"{student['name']} ({student['roll']})\", key=key)
+            checked = st.checkbox(f"{student['name']} ({student['roll']})", key=key)
             status[student['id']] = 'present' if checked else 'absent'
         submitted = st.form_submit_button("Submit")
         if submitted:
