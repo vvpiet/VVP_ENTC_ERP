@@ -38,6 +38,9 @@ def mark_attendance(subject_id):
         st.warning("Subject has no class assigned; showing all students")
         c.execute(_sql("SELECT id,name,roll FROM students"))
         student_rows = c.fetchall()
+
+    # Convert results to a list of dicts for rendering
+    students_data = []
     for row in student_rows:
         row_dict = row if isinstance(row, dict) else {
             'id': row[0],
