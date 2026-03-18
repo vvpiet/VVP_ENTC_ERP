@@ -249,9 +249,8 @@ def faculty_materials(user):
         conn.close()
         return
 
-    # Keep the selected subject stable across reruns (to avoid missing files after refresh)
+    # Keep the selected subject stable across reruns (to avoid losing selection)
     labels = [f"{s['name']} ({s.get('class_level','')})" for s in subjects]
-    # Determine default index from session state if available
     default_index = 0
     if 'faculty_material_subject_id' in st.session_state:
         prev_id = st.session_state['faculty_material_subject_id']
@@ -261,7 +260,8 @@ def faculty_materials(user):
                 break
 
     sel = st.selectbox("Subject", labels, index=default_index)
-    subject = subjects[default_index]
+    selected_index = labels.index(sel)
+    subject = subjects[selected_index]
     st.session_state['faculty_material_subject_id'] = subject['id']
 
     # upload section

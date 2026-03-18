@@ -47,17 +47,30 @@ def mark_attendance(subject_id):
         students_data.append(row_dict)
     
     status = {}
-    with st.form("attendance_form"):
-        st.write("Tick checkbox for present students. Unticked will be marked absent.")
-        for student in students_data:
-            key = f"stu_{student['id']}"
-            checked = st.checkbox(f"{student['name']} ({student['roll']})", key=key)
-            status[student['id']] = 'present' if checked else 'absent'
-        submitted = st.form_submit_button("Submit")
-        if submitted:
-            for student_id, stat in status.items():
-                c.execute(_sql("INSERT INTO attendance (student_id,subject_id,date,status) VALUES (?,?,?,?)"),
-                          (student_id, subject_id, str(date.today()), stat))
-            conn.commit()
-            st.success("Attendance recorded")
-    conn.close()
+    try:
+        with st.form("attendance_form"):
+            st.write("Tick checkbox for present students. Unticked will be marked absent.")
+            for student in students_data:
+                # Ensure the student dict has required keys
+                sid = student.get('id') if isinstance(student, dict) else None
+                name = student.get('name') if isinstance(student, dict) else None
+                roll = student.get('roll') if isinstance(student, dict) else None
+                if sid is None or name is None or roll is None:
+                    continue
+
+                key = f"stu_{sid}"
+                checked = st.checkbox(f"{name} ({roll})", key=key)
+                status[sid] = 'present' if checked else 'absent'
+
+            # Always include submit button so Streamlit doesn't warn
+            submitted = st.form_submit_button("Submit")
+            if submitted:
+                for student_id, stat in status.items():
+                    c.execute(_sql("INSERT INTO attendance (student_id,subject_id,date,status) VALUES (?,?,?,?)"),
+                              (student_id, subject_id, str(date.today()), stat))
+                conn.commit()
+                st.success("Attendance recorded")
+    except Exception as e:
+        st.error(f"Failed to render attendance form: {e}")
+    finally:
+        conn.close()
