@@ -25,19 +25,33 @@ def mark_attendance(subject_id):
         st.error("Subject not found")
         return
     cls = res['class_level'] if isinstance(res, dict) else res[0]
-    # get students in that class (if class defined)
+    
+    # get students in that class (if class defined) using cursor
     if cls:
-        students = pd.read_sql_query(_sql("SELECT id,name,roll FROM students WHERE class_level=?"), conn, params=(cls,))
+        c.execute(_sql("SELECT id,name,roll FROM students WHERE class_level=?"), (cls,))
     else:
         st.warning("Subject has no class assigned; showing all students")
-        students = pd.read_sql_query(_sql("SELECT id,name,roll FROM students"), conn)
+        c.execute(_sql("SELECT id,name,roll FROM students"))
+    
+    student_rows = c.fetchall()
+    
+    # Convert rows to dicts
+    students_data = []
+    for row in student_rows:
+        row_dict = row if isinstance(row, dict) else {
+            'id': row[0],
+            'name': row[1],
+            'roll': row[2]
+        }
+        students_data.append(row_dict)
+    
     status = {}
     with st.form("attendance_form"):
         st.write("Tick checkbox for present students. Unticked will be marked absent.")
-        for idx, row in students.iterrows():
-            key = f"stu_{row['id']}"
-            checked = st.checkbox(f"{row['name']} ({row['roll']})", key=key)
-            status[row['id']] = 'present' if checked else 'absent'
+        for student in students_data:
+            key = f"stu_{student['id']}"
+            checked = st.checkbox(f\"{student['name']} ({student['roll']})\", key=key)
+            status[student['id']] = 'present' if checked else 'absent'
         submitted = st.form_submit_button("Submit")
         if submitted:
             for student_id, stat in status.items():
