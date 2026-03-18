@@ -63,6 +63,7 @@ def take_attendance(user):
         return
 
     # build dropdown labels including class
+    subject_id = None
     if subjects_data:
         labels = [f"{s['name']} ({s.get('class_level', '')})" for s in subjects_data]
         sel = st.selectbox("Subject", labels)
@@ -70,11 +71,14 @@ def take_attendance(user):
         idx = labels.index(sel)
         subject_id = int(subjects_data[idx]['id'])
 
-    if st.button("Load students") and subject is not None:
-        st.session_state.selected_subject = subject
+    if 'selected_subject' not in st.session_state:
+        st.session_state.selected_subject = None
+
+    if st.button("Load students") and subject_id is not None:
+        st.session_state.selected_subject = subject_id
 
     # if a subject has been loaded, display attendance form
-    if st.session_state.selected_subject:
+    if st.session_state.selected_subject is not None:
         mark_attendance(st.session_state.selected_subject)
 
 
