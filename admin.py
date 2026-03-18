@@ -154,17 +154,30 @@ def manage_students():
             df.sort_values(['class_order','roll'], inplace=True)
             conn = get_connection()
             c = conn.cursor()
-            c.execute(_sql("DELETE FROM students"))
+            # INSERT OR IGNORE to preserve old students (don't delete them)
+            added_count = 0
             for _, row in df.iterrows():
                 cls = str(row['class']).upper()
                 try:
                     c.execute(_sql("INSERT INTO students (name,roll,class_level) VALUES (?,?,?)"), (row['name'], row['roll'], cls))
+                    added_count += 1
                 except Exception as e:
                     # skip duplicates or report
-                    print(f"skipping roll {row['roll']}: {e}")
+                    st.info(f"Roll {row['roll']} already exists or error: {e}")
             conn.commit()
             conn.close()
-            st.success("Students uploaded and sorted")
+            st.success(f"Students uploaded successfully! Added/Updated {added_count} records")
+
+    st.markdown("---")
+    st.subheader("Current Students in Database")
+    conn = get_connection()
+    df_students = pd.read_sql_query(_sql("SELECT id,name,roll,class_level FROM students ORDER BY class_level, roll"), conn)
+    conn.close()
+    if not df_students.empty:
+        st.dataframe(df_students, use_container_width=True)
+        st.info(f"Total students: {len(df_students)}")
+    else:
+        st.warning("No students in database yet. Please upload a student list.")
 
     st.markdown("---")
     st.subheader("Delete student")

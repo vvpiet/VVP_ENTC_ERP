@@ -309,34 +309,58 @@ def faculty_materials(user):
     # show existing materials for this subject
     st.markdown("---")
     st.write("### Existing Notes")
-    cur.execute(_sql("SELECT id,title,filename,created_at FROM notes WHERE subject_id=? ORDER BY created_at DESC"), (subject['id'],))
-    notes = cur.fetchall()
-    for note_row in notes:
-        note = note_row if isinstance(note_row, dict) else {
-            'id': note_row[0],
-            'title': note_row[1],
-            'filename': note_row[2],
-            'created_at': note_row[3]
-        }
-        if st.button(f"Download: {note['title']}", key=f"note_{note['id']}"):
-            with open(os.path.join('uploads', note['filename']), 'rb') as f:
-                st.download_button(f"Download {note['title']}", data=f.read(), file_name=note['filename'])
+    try:
+        cur.execute(_sql("SELECT id,title,filename,created_at FROM notes WHERE subject_id=? ORDER BY created_at DESC"), (subject['id'],))
+        notes = cur.fetchall()
+        if notes:
+            for idx, note_row in enumerate(notes):
+                note = note_row if isinstance(note_row, dict) else {
+                    'id': note_row[0],
+                    'title': note_row[1],
+                    'filename': note_row[2],
+                    'created_at': note_row[3]
+                }
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.write(f"📄 {note['title']}")
+                with col2:
+                    try:
+                        with open(os.path.join('uploads', note['filename']), 'rb') as f:
+                            st.download_button("📥", data=f.read(), file_name=note['filename'], key=f"note_dl_{note['id']}")
+                    except FileNotFoundError:
+                        st.error("File missing")
+        else:
+            st.info("No notes uploaded yet")
+    except Exception as e:
+        st.error(f"Error loading notes: {e}")
 
     st.markdown("---")
     st.write("### Existing Assignments")
-    cur.execute(_sql("SELECT id,title,filename,due_date,created_at FROM assignments WHERE subject_id=? ORDER BY created_at DESC"), (subject['id'],))
-    assignments = cur.fetchall()
-    for assn_row in assignments:
-        assn = assn_row if isinstance(assn_row, dict) else {
-            'id': assn_row[0],
-            'title': assn_row[1],
-            'filename': assn_row[2],
-            'due_date': assn_row[3],
-            'created_at': assn_row[4]
-        }
-        if st.button(f"Download (due {assn.get('due_date')}): {assn['title']}", key=f"assn_{assn['id']}"):
-            with open(os.path.join('uploads', assn['filename']), 'rb') as f:
-                st.download_button(f"Download {assn['title']}", data=f.read(), file_name=assn['filename'])
+    try:
+        cur.execute(_sql("SELECT id,title,filename,due_date,created_at FROM assignments WHERE subject_id=? ORDER BY created_at DESC"), (subject['id'],))
+        assignments = cur.fetchall()
+        if assignments:
+            for idx, assn_row in enumerate(assignments):
+                assn = assn_row if isinstance(assn_row, dict) else {
+                    'id': assn_row[0],
+                    'title': assn_row[1],
+                    'filename': assn_row[2],
+                    'due_date': assn_row[3],
+                    'created_at': assn_row[4]
+                }
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.write(f"📋 {assn['title']} (Due: {assn.get('due_date')})")
+                with col2:
+                    try:
+                        with open(os.path.join('uploads', assn['filename']), 'rb') as f:
+                            st.download_button("📥", data=f.read(), file_name=assn['filename'], key=f"assn_dl_{assn['id']}")
+                    except FileNotFoundError:
+                        st.error("File missing")
+        else:
+            st.info("No assignments posted yet")
+    except Exception as e:
+        st.error(f"Error loading assignments: {e}")
 
     conn.close()
 
