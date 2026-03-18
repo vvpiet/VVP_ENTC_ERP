@@ -385,3 +385,66 @@ def view_reports():
         csv = df.to_csv(index=False).encode('utf-8')
         st.download_button("Download CSV", data=csv, file_name=f"attendance_{start}_{end}.csv")
         st.dataframe(df)
+
+    # --- LER download section ---
+    st.markdown("---")
+    st.subheader("Download LER (Lecture Engagement Register)")
+    ler_date = st.date_input("LER date", pd.to_datetime("today").date())
+    conn = get_connection()
+    ler_df = pd.read_sql_query(
+        _sql("SELECT l.date, f.name AS faculty, s.name AS subject, l.lecture_number, l.syllabus_covered_pct, l.present_count, l.absent_rolls "
+             "FROM ler l "
+             "JOIN faculty f ON l.faculty_id=f.id "
+             "JOIN subjects s ON l.subject_id=s.id "
+             "WHERE l.date = ?"),
+        conn, params=(str(ler_date),))
+    conn.close()
+
+    if ler_df.empty:
+        st.info("No LER entries found for the selected date.")
+        return
+
+    st.write("### LER data")
+    st.dataframe(ler_df)
+
+    # Provide XLS download
+    from io import BytesIO
+    xls_buf = BytesIO()
+    ler_df.to_excel(xls_buf, index=False)
+    xls_buf.seek(0)
+    st.download_button("Download LER XLS", data=xls_buf, file_name=f"ler_{ler_date}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+    # Provide PDF download via fpdf
+    try:
+        from fpdf import FPDF
+
+        def _df_to_pdf_bytes(df):
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", "B", 14)
+            pdf.cell(0, 10, f"LER Report - {ler_date}", ln=True, align="C")
+            pdf.ln(4)
+            pdf.set_font("Arial", "", 9)
+
+            # Estimate column width based on page width
+            page_width = pdf.w - 2 * pdf.l_margin
+            col_width = page_width / len(df.columns)
+
+            # Header
+            for col in df.columns:
+                pdf.cell(col_width, 8, str(col), border=1)
+            pdf.ln()
+
+            # Rows
+            for _, row in df.iterrows():
+                for item in row:
+                    text = str(item) if item is not None else ""
+                    pdf.cell(col_width, 6, text[:40], border=1)
+                pdf.ln()
+
+            return pdf.output(dest="S").encode("latin-1")
+
+        pdf_bytes = _df_to_pdf_bytes(ler_df)
+        st.download_button("Download LER PDF", data=pdf_bytes, file_name=f"ler_{ler_date}.pdf", mime="application/pdf")
+    except Exception as e:
+        st.error(f"Failed to build PDF: {e}")

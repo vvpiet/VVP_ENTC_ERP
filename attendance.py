@@ -29,14 +29,15 @@ def mark_attendance(subject_id):
     # get students in that class (if class defined) using cursor
     if cls:
         c.execute(_sql("SELECT id,name,roll FROM students WHERE class_level=?"), (cls,))
+        student_rows = c.fetchall()
+        if not student_rows:
+            st.warning(f"No students found for class '{cls}'. Showing all students instead.")
+            c.execute(_sql("SELECT id,name,roll FROM students"))
+            student_rows = c.fetchall()
     else:
         st.warning("Subject has no class assigned; showing all students")
         c.execute(_sql("SELECT id,name,roll FROM students"))
-    
-    student_rows = c.fetchall()
-    
-    # Convert rows to dicts
-    students_data = []
+        student_rows = c.fetchall()
     for row in student_rows:
         row_dict = row if isinstance(row, dict) else {
             'id': row[0],

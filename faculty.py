@@ -1,7 +1,40 @@
 import streamlit as st
-from db import get_connection, _sql
+from db import get_connection, _sql, USE_POSTGRES
 import pandas as pd
 from attendance import mark_attendance
+
+
+def _ensure_faculty_record(user, conn):
+    """Ensure a faculty row exists tied to this user and return its id."""
+    uid = None
+    try:
+        uid = int(user.get('id'))
+    except Exception:
+        uid = None
+
+    cur = conn.cursor()
+
+    if uid is not None:
+        # Ensure row exists for this faculty user
+        cur.execute(_sql("SELECT id FROM faculty WHERE id=?"), (uid,))
+        if not cur.fetchone():
+            name = user.get('username', '').strip()
+            if USE_POSTGRES:
+                cur.execute(_sql("INSERT INTO faculty (id,name) SELECT ?,? WHERE NOT EXISTS (SELECT 1 FROM faculty WHERE id=?)"),
+                            (uid, name, uid))
+            else:
+                # SQLite supports INSERT OR IGNORE
+                cur.execute(_sql("INSERT OR IGNORE INTO faculty (id,name) VALUES (?,?)"), (uid, name))
+            conn.commit()
+        return uid
+
+    # fallback: match by username
+    uname = user.get('username', '').strip().lower()
+    cur.execute(_sql("SELECT id FROM faculty WHERE LOWER(name)=?"), (uname,))
+    row = cur.fetchone()
+    if row:
+        return row['id'] if isinstance(row, dict) else row[0]
+    return None
 
 
 def faculty_portal(user):
@@ -23,32 +56,17 @@ def faculty_portal(user):
 def take_attendance(user):
     st.subheader("Take Attendance")
     conn = get_connection()
-    # determine the correct faculty.id stored in faculty table
-    fid = None
-    try:
-        uid = int(user.get('id'))
-    except Exception:
-        uid = None
     cur = conn.cursor()
-    if uid is not None:
-        # try matching by user id first
-        cur.execute(_sql("SELECT id FROM faculty WHERE id=?"), (uid,))
-        row = cur.fetchone()
-        if row:
-            fid = row['id'] if isinstance(row, dict) else row[0]
-    if fid is None:
-        # fallback: match by username (case-insensitive)
-        uname = user.get('username', '').strip().lower()
-        cur.execute(_sql("SELECT id FROM faculty WHERE LOWER(name)=?"), (uname,))
-        row = cur.fetchone()
-        if row:
-            fid = row['id'] if isinstance(row, dict) else row[0]
+
+    # Ensure there is a faculty record for this user and obtain its id.
+    fid = _ensure_faculty_record(user, conn)
+
     # retrieve subjects for this faculty
+    subjects_data = []
     if fid is not None:
         cur.execute(_sql("SELECT s.id,s.name,s.class_level FROM subjects s WHERE s.faculty_id=?"), (fid,))
         subject_rows = cur.fetchall()
         # Convert rows to list of dicts
-        subjects_data = []
         for row in subject_rows:
             row_dict = row if isinstance(row, dict) else {
                 'id': row[0],
@@ -56,8 +74,6 @@ def take_attendance(user):
                 'class_level': row[2]
             }
             subjects_data.append(row_dict)
-    else:
-        subjects_data = []
     conn.close()
 
     if not subjects_data:
@@ -115,24 +131,9 @@ def view_attendance(user):
 def lecture_engagement_register(user):
     st.subheader("Lecture Engagement Register (LER)")
     conn = get_connection()
-    cur = conn.cursor()
-    # resolve faculty id same as attendance logic
-    fid = None
-    try:
-        uid = int(user.get('id'))
-    except Exception:
-        uid = None
-    if uid is not None:
-        cur.execute(_sql("SELECT id FROM faculty WHERE id=?"), (uid,))
-        row = cur.fetchone()
-        if row:
-            fid = row['id'] if isinstance(row, dict) else row[0]
-    if fid is None:
-        uname = user.get('username', '').strip().lower()
-        cur.execute(_sql("SELECT id FROM faculty WHERE LOWER(name)=?"), (uname,))
-        row = cur.fetchone()
-        if row:
-            fid = row['id'] if isinstance(row, dict) else row[0]
+
+    # Ensure there is a faculty record for this user and get its id
+    fid = _ensure_faculty_record(user, conn)
 
     if fid is None:
         st.info("Faculty record not found. Ask admin to create your faculty entry.")
@@ -226,25 +227,9 @@ def faculty_materials(user):
     """Allow faculty to upload notes and assignments for their subjects."""
     st.subheader("Notes & Assignments")
 
-    # resolve faculty id
+    # resolve faculty id and ensure a faculty record exists for this user
     conn = get_connection()
-    cur = conn.cursor()
-    fid = None
-    try:
-        uid = int(user.get('id'))
-    except Exception:
-        uid = None
-    if uid is not None:
-        cur.execute(_sql("SELECT id FROM faculty WHERE id=?"), (uid,))
-        row = cur.fetchone()
-        if row:
-            fid = row['id'] if isinstance(row, dict) else row[0]
-    if fid is None:
-        uname = user.get('username', '').strip().lower()
-        cur.execute(_sql("SELECT id FROM faculty WHERE LOWER(name)=?"), (uname,))
-        row = cur.fetchone()
-        if row:
-            fid = row['id'] if isinstance(row, dict) else row[0]
+    fid = _ensure_faculty_record(user, conn)
 
     if fid is None:
         st.error("Faculty record not found. Ask admin to create your faculty entry.")
@@ -264,9 +249,20 @@ def faculty_materials(user):
         conn.close()
         return
 
-    subj_map = {f"{s['name']} ({s.get('class_level','')})": s for s in subjects}
-    sel = st.selectbox("Subject", list(subj_map.keys()))
-    subject = subj_map[sel]
+    # Keep the selected subject stable across reruns (to avoid missing files after refresh)
+    labels = [f"{s['name']} ({s.get('class_level','')})" for s in subjects]
+    # Determine default index from session state if available
+    default_index = 0
+    if 'faculty_material_subject_id' in st.session_state:
+        prev_id = st.session_state['faculty_material_subject_id']
+        for i, s in enumerate(subjects):
+            if s['id'] == prev_id:
+                default_index = i
+                break
+
+    sel = st.selectbox("Subject", labels, index=default_index)
+    subject = subjects[default_index]
+    st.session_state['faculty_material_subject_id'] = subject['id']
 
     # upload section
     st.markdown("---")
