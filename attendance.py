@@ -23,21 +23,28 @@ def mark_attendance(subject_id):
     res = c.fetchone()
     if not res:
         st.error("Subject not found")
+        conn.close()
         return
     cls = res['class_level'] if isinstance(res, dict) else res[0]
     
     # get students in that class (if class defined) using cursor
-    if cls:
-        c.execute(_sql("SELECT id,name,roll FROM students WHERE class_level=?"), (cls,))
+    student_rows = []
+    if cls and str(cls).strip():
+        c.execute(_sql("SELECT id,name,roll FROM students WHERE class_level=?"), (str(cls).strip(),))
         student_rows = c.fetchall()
         if not student_rows:
             st.warning(f"No students found for class '{cls}'. Showing all students instead.")
-            c.execute(_sql("SELECT id,name,roll FROM students"))
+            c.execute(_sql("SELECT id,name,roll FROM students ORDER BY name"))
             student_rows = c.fetchall()
     else:
         st.warning("Subject has no class assigned; showing all students")
-        c.execute(_sql("SELECT id,name,roll FROM students"))
+        c.execute(_sql("SELECT id,name,roll FROM students ORDER BY name"))
         student_rows = c.fetchall()
+    
+    if not student_rows:
+        st.error("No students found in database")
+        conn.close()
+        return
 
     # Convert results to a list of dicts for rendering
     students_data = []

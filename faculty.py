@@ -275,7 +275,7 @@ def faculty_materials(user):
         if not note_title or not note_file:
             st.error("Title and file are required")
         else:
-            import os
+
             os.makedirs('uploads', exist_ok=True)
             filename = f"{subject['code']}_note_{int(pd.Timestamp('now').timestamp())}_{note_file.name}"
             path = os.path.join('uploads', filename)
@@ -295,7 +295,6 @@ def faculty_materials(user):
         if not assn_title or not assn_file:
             st.error("Title and file are required")
         else:
-            import os
             os.makedirs('uploads', exist_ok=True)
             filename = f"{subject['code']}_assn_{int(pd.Timestamp('now').timestamp())}_{assn_file.name}"
             path = os.path.join('uploads', filename)
