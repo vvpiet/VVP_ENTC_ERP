@@ -64,9 +64,13 @@ def login():
     # Only show admin creation if no admin exists
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute(_sql("SELECT COUNT(*) FROM users WHERE role='admin'"))
+    cur.execute(_sql("SELECT COUNT(*) as cnt FROM users WHERE role='admin'"))
     res = cur.fetchone()
-    admin_count = res[0] if isinstance(res, tuple) else res['count'] if isinstance(res, dict) else 0
+    # Handle both dict (Postgres) and tuple (SQLite) results
+    if isinstance(res, dict):
+        admin_count = res.get('cnt', 0)
+    else:
+        admin_count = res[0] if res else 0
     conn.close()
     if admin_count == 0:
         with st.expander("Create admin account"):

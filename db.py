@@ -48,6 +48,30 @@ def _sql(sql: str) -> str:
     return sql
 
 
+def execute_query(sql: str, params=None):
+    """Execute a query and return results as list of dicts."""
+    conn = get_connection()
+    c = conn.cursor()
+    try:
+        if params:
+            c.execute(_sql(sql), params)
+        else:
+            c.execute(_sql(sql))
+        
+        # For SELECT queries, fetch all rows
+        if sql.strip().upper().startswith('SELECT'):
+            results = c.fetchall()
+            conn.close()
+            return results
+        else:
+            conn.commit()
+            conn.close()
+            return None
+    except Exception as e:
+        conn.close()
+        raise e
+
+
 def initialize_db():
     conn = get_connection()
     c = conn.cursor()

@@ -237,40 +237,52 @@ def manage_subjects():
     
     # show subjects with same connection
     try:
-        df = pd.read_sql_query(_sql("SELECT s.id,s.name,s.code,s.class_level,f.name as faculty FROM subjects s LEFT JOIN faculty f ON s.faculty_id=f.id ORDER BY s.id"), conn)
+        # Use cursor directly instead of pandas to avoid compatibility issues
+        c.execute(_sql("SELECT s.id,s.name,s.code,s.class_level,f.name as faculty FROM subjects s LEFT JOIN faculty f ON s.faculty_id=f.id ORDER BY s.id"))
+        subject_rows = c.fetchall()
+        
+        # Convert to list of dicts for easier handling
+        subjects_data = []
+        for row in subject_rows:
+            row_dict = row if isinstance(row, dict) else {
+                'id': row[0],
+                'name': row[1],
+                'code': row[2],
+                'class_level': row[3],
+                'faculty': row[4]
+            }
+            subjects_data.append(row_dict)
     except Exception as e:
         st.error(f"Failed to fetch subjects: {e}")
         conn.close()
         return
     
     st.write("### Subject Assignments:")
-    if df is None or df.empty:
+    if not subjects_data:
         st.info("No subjects found in database")
     else:
         # Show debug information
-        st.write(f"✓ Retrieved {len(df)} rows from database")
+        st.write(f"✓ Retrieved {len(subjects_data)} rows from database")
         
         # Add debug expander to show raw data
         with st.expander("Debug: Show Raw Query Results"):
-            st.json({
-                'shape': str(df.shape),
-                'columns': list(df.columns),
-                'dtypes': str(df.dtypes.to_dict()),
-                'first_row': df.iloc[0].to_dict() if len(df) > 0 else None
-            })
+            if len(subjects_data) > 0:
+                st.write("First row:")
+                st.json(subjects_data[0])
         
-        # Simple display - just rename columns and show
-        display_df = df.copy()
-        display_df.columns = ['ID', 'Name', 'Code', 'Class', 'Faculty']
-        display_df['Faculty'] = display_df['Faculty'].fillna('Unassigned')
-        display_df = display_df.astype(str)  # Convert all to string for display
+        # Create pandas dataframe from our data
+        df = pd.DataFrame(subjects_data)
+        df.columns = ['ID', 'Name', 'Code', 'Class', 'Faculty']
+        df['Faculty'] = df['Faculty'].fillna('Unassigned')
         
-        st.dataframe(display_df, use_container_width=True)
+        st.dataframe(df, use_container_width=True)
 
     st.markdown("---")
     st.subheader("Update subject faculty")
-    if not df.empty and len(df) > 0:
-        to_update = st.selectbox("Select subject to update", df['code'].tolist())
+    if subjects_data and len(subjects_data) > 0:
+        # Get codes for update dropdown
+        subject_codes = [s['code'] for s in subjects_data]
+        to_update = st.selectbox("Select subject to update", subject_codes)
         # get faculty options
         cur_fac = conn.cursor()
         cur_fac.execute(_sql("SELECT id,name FROM faculty"))
@@ -298,8 +310,10 @@ def manage_subjects():
 
     st.markdown("---")
     st.subheader("Delete subject")
-    if not df.empty and len(df) > 0:
-        to_delete = st.selectbox("Select subject code", df['code'].tolist())
+    if subjects_data and len(subjects_data) > 0:
+        # Get codes for delete dropdown
+        subject_codes = [s['code'] for s in subjects_data]
+        to_delete = st.selectbox("Select subject code", subject_codes)
         if st.button("Delete subject"):
             try:
                 cur = conn.cursor()
