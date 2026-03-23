@@ -530,9 +530,20 @@ def view_reports():
     # Provide XLS download
     from io import BytesIO
     xls_buf = BytesIO()
-    ler_df.to_excel(xls_buf, index=False)
-    xls_buf.seek(0)
-    st.download_button("Download LER XLS", data=xls_buf, file_name=f"ler_{ler_date}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    try:
+        # Prefer openpyxl but fallback to xlsxwriter if not installed
+        with pd.ExcelWriter(xls_buf, engine='openpyxl') as writer:
+            ler_df.to_excel(writer, index=False)
+    except ImportError:
+        try:
+            with pd.ExcelWriter(xls_buf, engine='xlsxwriter') as writer:
+                ler_df.to_excel(writer, index=False)
+        except ImportError:
+            st.error("Install openpyxl or xlsxwriter for XLS export: pip install openpyxl xlsxwriter")
+            xls_buf = None
+    if xls_buf is not None:
+        xls_buf.seek(0)
+        st.download_button("Download LER XLS", data=xls_buf, file_name=f"ler_{ler_date}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
     # Provide PDF download via fpdf
     try:
