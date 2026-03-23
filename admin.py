@@ -158,6 +158,14 @@ def manage_students():
         else:
             # normalize class values
             df['class'] = df['class'].astype(str).str.strip().str.upper()
+            # drop header-like rows accidentally imported as data
+            filter_bad = ~(
+                df['roll'].astype(str).str.strip().str.lower().isin(['roll', 'id', '']) |
+                df['name'].astype(str).str.strip().str.lower().isin(['name', '']) |
+                df['class'].astype(str).str.strip().str.upper().isin(['class', ''])
+            )
+            df = df[filter_bad]
+
             order = {'SY':0,'TY':1,'BTECH':2}
             df['class_order'] = df['class'].map(lambda x: order.get(x,99))
             df.sort_values(['class_order','roll'], inplace=True)
@@ -172,8 +180,7 @@ def manage_students():
                 try:
                     c.execute(_sql("INSERT INTO students (name,roll,class_level,academic_year) VALUES (?,?,?,?)"), (row['name'], row['roll'], cls, current_year))
                     added_count += 1
-                except Exception as e:
-                    # skip duplicates or report
+                except Exception:
                     pass
             conn.commit()
             conn.close()
