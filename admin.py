@@ -491,12 +491,16 @@ def view_reports():
 
     if st.button("Generate report"):
         conn = get_connection()
+        cur = conn.cursor()
+        # Clean invalid rows before report
+        cur.execute(_sql("DELETE FROM attendance WHERE date IN ('date','subject') OR status IN ('status','subject') OR date IS NULL OR status IS NULL"))
+        conn.commit()
         df = pd.read_sql_query(
             _sql("SELECT a.date, s.name as subject, st.roll, st.name as student, a.status "
                  "FROM attendance a "
                  "JOIN students st ON a.student_id=st.id "
                  "JOIN subjects s ON a.subject_id=s.id "
-                 "WHERE date BETWEEN ? AND ?"),
+                 "WHERE date BETWEEN ? AND ? AND a.status IN ('present','absent')"),
             conn, params=(str(start), str(end)))
         conn.close()
         if df.empty:
