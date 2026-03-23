@@ -168,6 +168,7 @@ def manage_students():
 
             order = {'SY':0,'TY':1,'BTECH':2}
             df['class_order'] = df['class'].map(lambda x: order.get(x,99))
+            df['class_order'] = pd.to_numeric(df['class_order'], errors='coerce').fillna(99).astype(int)
             df.sort_values(['class_order','roll'], inplace=True)
             conn = get_connection()
             c = conn.cursor()
