@@ -16,7 +16,10 @@ def check_alerts_threshold(threshold=75):
     c.execute(query)
     threshold = float(threshold)
     for row in c:
+        if not row or len(row) < 3:
+            continue
         student_id, subject_id, pct = row
+        # enforce numeric values before compare
         try:
             pct_val = float(pct)
         except (TypeError, ValueError):
