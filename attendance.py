@@ -27,6 +27,19 @@ def mark_attendance(subject_id):
         return
     cls = res['class_level'] if isinstance(res, dict) else res[0]
     
+    # DEBUG: Show what we're looking for
+    with st.expander("🔍 Debug Info"):
+        st.write(f"Subject Class Level: {cls}")
+        # Show all students in database
+        c.execute(_sql("SELECT COUNT(*) FROM students"))
+        total_count = c.fetchone()
+        total_students = total_count[0] if isinstance(total_count, tuple) else total_count[0]
+        st.write(f"Total students in DB: {total_students}")
+        
+        c.execute(_sql("SELECT DISTINCT class_level FROM students"))
+        classes = c.fetchall()
+        st.write(f"Classes in DB: {[r[0] if isinstance(r, tuple) else r['class_level'] for r in classes]}")
+    
     # get students in that class (if class defined) using cursor
     student_rows = []
     if cls and str(cls).strip():
@@ -42,7 +55,7 @@ def mark_attendance(subject_id):
         student_rows = c.fetchall()
     
     if not student_rows:
-        st.error("No students found in database")
+        st.error("❌ No students found in database. Please upload student list in Admin → Students")
         conn.close()
         return
 

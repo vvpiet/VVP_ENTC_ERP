@@ -63,12 +63,21 @@ def manage_users():
                 # add corresponding student/faculty entry if needed
                 cur = conn.cursor()
                 if role == 'student':
+                    import datetime
+                    current_year = datetime.datetime.now().year
                     # NOTE: psycopg2 requires a cursor for execute (sqlite allows conn.execute)
-                    cur.execute(
-                        _sql("INSERT INTO students (id,name,roll,class_level) VALUES (?,?,?,?) ON CONFLICT(roll) DO NOTHING"),
-                        (uid, uname, uname, student_class)
-                    )
-                    st.write(f"Inserted student row for user id {uid}")
+                    try:
+                        cur.execute(
+                            _sql("INSERT INTO students (id,name,roll,class_level,academic_year) VALUES (?,?,?,?,?)"),
+                            (uid, uname, uname, student_class, current_year)
+                        )
+                    except Exception as e:
+                        # If that fails (e.g. student already exists from CSV), try update
+                        cur.execute(
+                            _sql("UPDATE students SET id=?,name=?,class_level=?,academic_year=? WHERE roll=?"),
+                            (uid, uname, student_class, current_year, uname)
+                        )
+                    st.write(f"Student user created for class {student_class} (Academic Year: {current_year})")
                 elif role == 'faculty':
                     # ensure faculty table uses the same id and name as user
                     try:
@@ -156,14 +165,16 @@ def manage_students():
             c = conn.cursor()
             # INSERT OR IGNORE to preserve old students (don't delete them)
             added_count = 0
+            import datetime
+            current_year = datetime.datetime.now().year
             for _, row in df.iterrows():
                 cls = str(row['class']).upper()
                 try:
-                    c.execute(_sql("INSERT INTO students (name,roll,class_level) VALUES (?,?,?)"), (row['name'], row['roll'], cls))
+                    c.execute(_sql("INSERT INTO students (name,roll,class_level,academic_year) VALUES (?,?,?,?)"), (row['name'], row['roll'], cls, current_year))
                     added_count += 1
                 except Exception as e:
                     # skip duplicates or report
-                    st.info(f"Roll {row['roll']} already exists or error: {e}")
+                    pass
             conn.commit()
             conn.close()
             st.success(f"Students uploaded successfully! Added/Updated {added_count} records")
@@ -171,25 +182,76 @@ def manage_students():
     st.markdown("---")
     st.subheader("Current Students in Database")
     conn = get_connection()
-    df_students = pd.read_sql_query(_sql("SELECT id,name,roll,class_level FROM students ORDER BY class_level, roll"), conn)
+    c = conn.cursor()
+    c.execute(_sql("SELECT id,name,roll,class_level,academic_year FROM students ORDER BY class_level, roll"))
+    student_rows = c.fetchall()
     conn.close()
-    if not df_students.empty:
-        st.dataframe(df_students, use_container_width=True)
-        st.info(f"Total students: {len(df_students)}")
+    
+    if student_rows:
+        st.write(f"✅ Total students: {len(student_rows)}")
+        students_data = []
+        for row in student_rows:
+            row_dict = row if isinstance(row, dict) else {
+                'id': row[0],
+                'name': row[1],
+                'roll': row[2],
+                'class_level': row[3],
+                'academic_year': row[4]
+            }
+            students_data.append(row_dict)
+        df_display = pd.DataFrame(students_data)
+        st.dataframe(df_display, use_container_width=True)
     else:
-        st.warning("No students in database yet. Please upload a student list.")
+        st.warning("⚠️ No students in database yet. Please upload a student list.")
+
+    st.markdown("---")
+    st.subheader("Auto-Upgrade Students (Academic Year)")
+    st.write("After each June, students automatically promote from SY→TY→BTech")
+    if st.button("Check & Upgrade Students Now"):
+        conn = get_connection()
+        cur = conn.cursor()
+        import datetime
+        current_month = datetime.datetime.now().month
+        current_year = datetime.datetime.now().year
+        
+        # Only upgrade after June (month 6)
+        if current_month >= 6:
+            # SY students from last year → TY
+            cur.execute(_sql("UPDATE students SET class_level=? WHERE class_level=? AND academic_year < ?"), ('TY', 'SY', current_year))
+            sy_upgraded = cur.rowcount
+            
+            # TY students from last year → BTech
+            cur.execute(_sql("UPDATE students SET class_level=? WHERE class_level=? AND academic_year < ?"), ('BTech', 'TY', current_year))
+            ty_upgraded = cur.rowcount
+            
+            # Update academic year for all promoted students
+            cur.execute(_sql("UPDATE students SET academic_year=? WHERE academic_year < ?"), (current_year, current_year))
+            
+            conn.commit()
+            conn.close()
+            st.success(f"✅ Upgraded {sy_upgraded} students SY→TY and {ty_upgraded} students TY→BTech")
+        else:
+            st.info(f"📅 Upgrades happen after June. Current month: {datetime.datetime.now().strftime('%B')}")
 
     st.markdown("---")
     st.subheader("Delete student")
     conn = get_connection()
-    df_students = pd.read_sql_query(_sql("SELECT id,name,roll,class_level FROM students"), conn)
+    c = conn.cursor()
+    c.execute(_sql("SELECT id,name,roll,class_level FROM students"))
+    student_rows = c.fetchall()
     conn.close()
-    if not df_students.empty:
-        to_delete = st.selectbox("Select student (roll)", df_students['roll'].tolist())
+    
+    if student_rows:
+        roll_list = []
+        for row in student_rows:
+            roll = row['roll'] if isinstance(row, dict) else row[2]
+            roll_list.append(roll)
+        to_delete = st.selectbox("Select student (roll)", roll_list)
         if st.button("Delete student"):
             conn = get_connection()
             cur = conn.cursor()
             cur.execute(_sql("DELETE FROM attendance WHERE student_id IN (SELECT id FROM students WHERE roll=?)"), (to_delete,))
+            cur.execute(_sql("DELETE FROM users WHERE id IN (SELECT id FROM students WHERE roll=?)"), (to_delete,))
             cur.execute(_sql("DELETE FROM students WHERE roll=?"), (to_delete,))
             conn.commit()
             conn.close()

@@ -190,6 +190,12 @@ def initialize_db():
         )
         ''')
 
+        # Add academic_year column if it doesn't exist
+        try:
+            c.execute("ALTER TABLE students ADD COLUMN academic_year INTEGER")
+        except:
+            pass
+
         # Ensure we commit DDL in Postgres right away so tables don't disappear if
         # a later statement fails (e.g. ALTER/UPDATE during migrations).
         conn.commit()
