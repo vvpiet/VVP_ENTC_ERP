@@ -33,7 +33,7 @@ def student_attendance(user):
              "FROM attendance a "
              "JOIN subjects sub ON a.subject_id=sub.id "
              "JOIN students s ON s.id=a.student_id "
-             "JOIN users u ON u.id=a.student_id "
+             "JOIN users u ON (u.id=s.id OR u.username=s.roll) "
              "WHERE u.username=? AND a.status IN ('present','absent') AND a.date NOT IN ('date','subject') AND sub.name NOT IN ('subject')"),
         conn, params=(user['username'],))
     # drop any garbage header rows still lurking
@@ -48,7 +48,7 @@ def student_attendance(user):
         _sql("SELECT sub.name as subject, s.class_level as class, SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END)*100.0/COUNT(*) as pct "
              "FROM attendance a JOIN subjects sub ON a.subject_id=sub.id "
              "JOIN students s ON s.id=a.student_id "
-             "JOIN users u ON u.id=a.student_id "
+             "JOIN users u ON (u.id=s.id OR u.username=s.roll) "
              "WHERE u.username=? AND a.status IN ('present','absent') AND a.date NOT IN ('date','subject') AND s.class_level NOT IN ('class','CLASS') AND sub.name NOT IN ('subject') GROUP BY sub.name,s.class_level"),
         conn, params=(user['username'],))
 

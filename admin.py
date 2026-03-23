@@ -1,5 +1,5 @@
 import streamlit as st
-from db import get_connection, _sql, get_db_info
+from db import get_connection, _sql, get_db_info, USE_POSTGRES
 from auth import hash_password
 import pandas as pd
 
@@ -140,16 +140,25 @@ def manage_users():
 
 
 def manage_students():
-    def upsert_student(name, roll, class_level, academic_year):
-        conn = get_connection()
-        c = conn.cursor()
-        if USE_POSTGRES:
-            sql = "INSERT INTO students (name,roll,class_level,academic_year) VALUES (%s,%s,%s,%s) " \
-                  "ON CONFLICT (roll) DO UPDATE SET name=EXCLUDED.name,class_level=EXCLUDED.class_level,academic_year=EXCLUDED.academic_year"
-            c.execute(sql, (name, roll, class_level, academic_year))
+    def upsert_student(name, roll, class_level, academic_year, student_id=None):
+        conn = get_connection(); c = conn.cursor()
+        if student_id is not None:
+            if USE_POSTGRES:
+                sql = "INSERT INTO students (id,name,roll,class_level,academic_year) VALUES (%s,%s,%s,%s,%s) " \
+                      "ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name,roll=EXCLUDED.roll,class_level=EXCLUDED.class_level,academic_year=EXCLUDED.academic_year"
+                c.execute(sql, (student_id, name, roll, class_level, academic_year))
+            else:
+                sql = _sql("INSERT INTO students (id,name,roll,class_level,academic_year) VALUES (?,?,?,?,?) "
+                           "ON CONFLICT(id) DO UPDATE SET name=excluded.name,roll=excluded.roll,class_level=excluded.class_level,academic_year=excluded.academic_year")
+                c.execute(sql, (student_id, name, roll, class_level, academic_year))
         else:
-            sql = _sql("INSERT INTO students (name,roll,class_level,academic_year) VALUES (?,?,?,?) ON CONFLICT(roll) DO UPDATE SET name=excluded.name,class_level=excluded.class_level,academic_year=excluded.academic_year")
-            c.execute(sql, (name, roll, class_level, academic_year))
+            if USE_POSTGRES:
+                sql = "INSERT INTO students (name,roll,class_level,academic_year) VALUES (%s,%s,%s,%s) " \
+                      "ON CONFLICT (roll) DO UPDATE SET name=EXCLUDED.name,class_level=EXCLUDED.class_level,academic_year=EXCLUDED.academic_year"
+                c.execute(sql, (name, roll, class_level, academic_year))
+            else:
+                sql = _sql("INSERT INTO students (name,roll,class_level,academic_year) VALUES (?,?,?,?) ON CONFLICT(roll) DO UPDATE SET name=excluded.name,class_level=excluded.class_level,academic_year=excluded.academic_year")
+                c.execute(sql, (name, roll, class_level, academic_year))
         conn.commit()
         conn.close()
 
@@ -185,15 +194,35 @@ def manage_students():
             df.sort_values(['class_order','roll'], inplace=True)
             added_count = 0
             import datetime
+            from auth import create_user
             current_year = datetime.datetime.now().year
             for _, row in df.iterrows():
                 cls = str(row['class']).upper()
+                roll = str(row['roll']).strip()
+                name = str(row['name']).strip()
+                student_id = None
+
+                # ensure student user exists and link by id
+                conn = get_connection(); c = conn.cursor()
+                c.execute(_sql("SELECT id FROM users WHERE username=?"), (roll,))
+                user_row = c.fetchone()
+                if user_row:
+                    student_id = user_row['id'] if isinstance(user_row, dict) else user_row[0]
+                else:
+                    # create user automatically with a random safe password if it does not exist
+                    try:
+                        student_id = create_user(roll, f"{roll}@123", 'student')
+                    except Exception:
+                        student_id = None
+                conn.close()
+
                 try:
-                    upsert_student(row['name'], row['roll'], cls, current_year)
+                    upsert_student(name, roll, cls, current_year, student_id=student_id)
                     added_count += 1
-                except Exception:
-                    pass
+                except Exception as e:
+                    st.warning(f"Skipping row {roll}: {e}")
             st.success(f"Students uploaded successfully! Added/Updated {added_count} records")
+            rerun()
 
     st.markdown("---")
     st.subheader("Current Students in Database")
