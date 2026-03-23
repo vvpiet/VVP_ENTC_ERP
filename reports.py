@@ -12,8 +12,9 @@ def generate_student_report(user):
     res = cur.fetchone()
     if not res:
         st.error("Student record not found")
+        conn.close()
         return
-    student_id = res[0]
+    student_id = res['id'] if isinstance(res, dict) else res[0]
     # fetch attendance
     df = pd.read_sql_query(
         _sql("SELECT a.date,sub.name,a.status FROM attendance a JOIN subjects sub ON a.subject_id=sub.id WHERE a.student_id=?"),

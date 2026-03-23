@@ -4,6 +4,9 @@ from db import get_connection, _sql, USE_POSTGRES
 import pandas as pd
 from attendance import mark_attendance
 
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'uploads')
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
 
 def _ensure_faculty_record(user, conn):
     """Ensure a faculty row exists tied to this user and return its id."""
@@ -278,7 +281,7 @@ def faculty_materials(user):
 
             os.makedirs('uploads', exist_ok=True)
             filename = f"{subject['code']}_note_{int(pd.Timestamp('now').timestamp())}_{note_file.name}"
-            path = os.path.join('uploads', filename)
+            path = os.path.join(UPLOAD_DIR, filename)
             with open(path, 'wb') as f:
                 f.write(note_file.getbuffer())
             cur.execute(_sql("INSERT INTO notes (subject_id,title,filename) VALUES (?,?,?)"),
@@ -297,7 +300,7 @@ def faculty_materials(user):
         else:
             os.makedirs('uploads', exist_ok=True)
             filename = f"{subject['code']}_assn_{int(pd.Timestamp('now').timestamp())}_{assn_file.name}"
-            path = os.path.join('uploads', filename)
+            path = os.path.join(UPLOAD_DIR, filename)
             with open(path, 'wb') as f:
                 f.write(assn_file.getbuffer())
             cur.execute(_sql("INSERT INTO assignments (subject_id,title,filename,due_date) VALUES (?,?,?,?)"),
@@ -324,8 +327,12 @@ def faculty_materials(user):
                     st.write(f"📄 {note['title']}")
                 with col2:
                     try:
-                        with open(os.path.join('uploads', note['filename']), 'rb') as f:
-                            st.download_button("📥", data=f.read(), file_name=note['filename'], key=f"note_dl_{note['id']}")
+                        note_path = os.path.join(UPLOAD_DIR, note['filename'])
+                        if os.path.exists(note_path):
+                            with open(note_path, 'rb') as f:
+                                st.download_button("📥", data=f.read(), file_name=note['filename'], key=f"note_dl_{note['id']}")
+                        else:
+                            st.error("File missing: {}".format(note['filename']))
                     except FileNotFoundError:
                         st.error("File missing")
         else:
@@ -352,8 +359,12 @@ def faculty_materials(user):
                     st.write(f"📋 {assn['title']} (Due: {assn.get('due_date')})")
                 with col2:
                     try:
-                        with open(os.path.join('uploads', assn['filename']), 'rb') as f:
-                            st.download_button("📥", data=f.read(), file_name=assn['filename'], key=f"assn_dl_{assn['id']}")
+                        assn_path = os.path.join(UPLOAD_DIR, assn['filename'])
+                        if os.path.exists(assn_path):
+                            with open(assn_path, 'rb') as f:
+                                st.download_button("📥", data=f.read(), file_name=assn['filename'], key=f"assn_dl_{assn['id']}")
+                        else:
+                            st.error("File missing: {}".format(assn['filename']))
                     except FileNotFoundError:
                         st.error("File missing")
         else:

@@ -27,13 +27,13 @@ def student_attendance(user):
              "FROM attendance a "
              "JOIN subjects sub ON a.subject_id=sub.id "
              "JOIN students s ON s.id=a.student_id "
-             "JOIN users u ON u.id=a.student_id WHERE u.username=?"), conn, params=(user['username'],))
+             "JOIN users u ON u.id=a.student_id WHERE u.username=? AND a.date != 'date' AND a.status != 'status'"), conn, params=(user['username'],))
     # compute percentages
     pct = pd.read_sql_query(
         _sql("SELECT sub.name as subject, s.class_level as class, SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END)*100.0/COUNT(*) as pct "
              "FROM attendance a JOIN subjects sub ON a.subject_id=sub.id "
              "JOIN students s ON s.id=a.student_id "
-             "JOIN users u ON u.id=a.student_id WHERE u.username=? GROUP BY sub.name,s.class_level"), conn, params=(user['username'],))
+             "JOIN users u ON u.id=a.student_id WHERE u.username=? AND a.status IN ('present','absent') GROUP BY sub.name,s.class_level"), conn, params=(user['username'],))
     conn.close()
     st.write("### Records")
     st.dataframe(df)
