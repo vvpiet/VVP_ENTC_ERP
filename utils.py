@@ -14,10 +14,15 @@ def check_alerts_threshold(threshold=75):
     '''
     # psycopg2's cursor.execute() returns None (unlike sqlite3), so call execute separately
     c.execute(query)
+    threshold = float(threshold)
     for row in c:
         student_id, subject_id, pct = row
-        if pct < threshold:
-            msg = f"Attendance below {threshold}%: {pct:.1f}%"
+        try:
+            pct_val = float(pct)
+        except (TypeError, ValueError):
+            continue
+        if pct_val < threshold:
+            msg = f"Attendance below {threshold}%: {pct_val:.1f}%"
             # avoid creating duplicate alerts for same student/subject
             exists = c.execute(_sql("SELECT 1 FROM alerts WHERE student_id=? AND subject_id=? AND message=?"),
                                (student_id, subject_id, msg)).fetchone()

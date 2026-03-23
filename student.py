@@ -36,6 +36,13 @@ def student_attendance(user):
              "JOIN users u ON u.id=a.student_id "
              "WHERE u.username=? AND a.status IN ('present','absent') AND a.date NOT IN ('date','subject') AND sub.name NOT IN ('subject')"),
         conn, params=(user['username'],))
+    # drop any garbage header rows still lurking
+    if not df.empty:
+        df = df[~df['date'].astype(str).str.lower().isin(['date', 'subject'])]
+        df = df[~df['subject'].astype(str).str.lower().isin(['subject'])]
+        df = df[~df['status'].astype(str).str.lower().isin(['status'])]
+        df = df[~df['class'].astype(str).str.lower().isin(['class'])]
+
     # compute percentages
     pct = pd.read_sql_query(
         _sql("SELECT sub.name as subject, s.class_level as class, SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END)*100.0/COUNT(*) as pct "
@@ -44,6 +51,12 @@ def student_attendance(user):
              "JOIN users u ON u.id=a.student_id "
              "WHERE u.username=? AND a.status IN ('present','absent') AND a.date NOT IN ('date','subject') AND s.class_level NOT IN ('class','CLASS') AND sub.name NOT IN ('subject') GROUP BY sub.name,s.class_level"),
         conn, params=(user['username'],))
+
+    # convert pct to numeric and drop invalid values
+    if not pct.empty:
+        pct['pct'] = pd.to_numeric(pct['pct'], errors='coerce')
+        pct = pct.dropna(subset=['pct'])
+
     conn.close()
     st.write("### Records")
     st.dataframe(df)
