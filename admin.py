@@ -140,6 +140,19 @@ def manage_users():
 
 
 def manage_students():
+    def upsert_student(name, roll, class_level, academic_year):
+        conn = get_connection()
+        c = conn.cursor()
+        if USE_POSTGRES:
+            sql = "INSERT INTO students (name,roll,class_level,academic_year) VALUES (%s,%s,%s,%s) " \
+                  "ON CONFLICT (roll) DO UPDATE SET name=EXCLUDED.name,class_level=EXCLUDED.class_level,academic_year=EXCLUDED.academic_year"
+            c.execute(sql, (name, roll, class_level, academic_year))
+        else:
+            sql = _sql("INSERT INTO students (name,roll,class_level,academic_year) VALUES (?,?,?,?) ON CONFLICT(roll) DO UPDATE SET name=excluded.name,class_level=excluded.class_level,academic_year=excluded.academic_year")
+            c.execute(sql, (name, roll, class_level, academic_year))
+        conn.commit()
+        conn.close()
+
     st.subheader("Students")
     st.write("Upload a CSV/XLS file with columns roll,name,class")
     file = st.file_uploader("Student list", type=["csv","xls","xlsx"])
@@ -170,21 +183,16 @@ def manage_students():
             df['class_order'] = df['class'].map(lambda x: order.get(x,99))
             df['class_order'] = pd.to_numeric(df['class_order'], errors='coerce').fillna(99).astype(int)
             df.sort_values(['class_order','roll'], inplace=True)
-            conn = get_connection()
-            c = conn.cursor()
-            # INSERT OR IGNORE to preserve old students (don't delete them)
             added_count = 0
             import datetime
             current_year = datetime.datetime.now().year
             for _, row in df.iterrows():
                 cls = str(row['class']).upper()
                 try:
-                    c.execute(_sql("INSERT INTO students (name,roll,class_level,academic_year) VALUES (?,?,?,?)"), (row['name'], row['roll'], cls, current_year))
+                    upsert_student(row['name'], row['roll'], cls, current_year)
                     added_count += 1
                 except Exception:
                     pass
-            conn.commit()
-            conn.close()
             st.success(f"Students uploaded successfully! Added/Updated {added_count} records")
 
     st.markdown("---")
