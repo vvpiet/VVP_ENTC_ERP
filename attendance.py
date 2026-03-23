@@ -28,17 +28,26 @@ def mark_attendance(subject_id):
     cls = res['class_level'] if isinstance(res, dict) else res[0]
     
     # DEBUG: Show what we're looking for
-    with st.expander("🔍 Debug Info"):
-        st.write(f"Subject Class Level: {cls}")
-        # Show all students in database
-        c.execute(_sql("SELECT COUNT(*) FROM students"))
-        total_count = c.fetchone()
-        total_students = total_count[0] if isinstance(total_count, tuple) else total_count[0]
-        st.write(f"Total students in DB: {total_students}")
-        
-        c.execute(_sql("SELECT DISTINCT class_level FROM students"))
-        classes = c.fetchall()
-        st.write(f"Classes in DB: {[r[0] if isinstance(r, tuple) else r['class_level'] for r in classes]}")
+    try:
+        with st.expander("🔍 Debug Info"):
+            st.write(f"Subject Class Level: {cls}")
+            # Show all students in database
+            c.execute(_sql("SELECT COUNT(*) as cnt FROM students"))
+            total_count = c.fetchone()
+            total_students = total_count['cnt'] if isinstance(total_count, dict) else total_count[0]
+            st.write(f"Total students in DB: {total_students}")
+            
+            c.execute(_sql("SELECT DISTINCT class_level FROM students"))
+            classes = c.fetchall()
+            class_list = []
+            for r in classes:
+                if isinstance(r, dict):
+                    class_list.append(r.get('class_level', 'N/A'))
+                else:
+                    class_list.append(r[0] if len(r) > 0 else 'N/A')
+            st.write(f"Classes in DB: {class_list}")
+    except Exception as e:
+        st.warning(f"Debug info error: {e}")
     
     # get students in that class (if class defined) using cursor
     student_rows = []
