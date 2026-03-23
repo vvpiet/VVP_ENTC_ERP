@@ -500,7 +500,11 @@ def view_reports():
                  "FROM attendance a "
                  "JOIN students st ON a.student_id=st.id "
                  "JOIN subjects s ON a.subject_id=s.id "
-                 "WHERE date BETWEEN ? AND ? AND a.status IN ('present','absent')"),
+                 "WHERE date BETWEEN ? AND ? "
+                 "AND a.status IN ('present','absent') "
+                 "AND a.date NOT IN ('date','subject') "
+                 "AND s.name NOT IN ('subject') "
+                 "AND st.roll NOT IN ('roll')"),
             conn, params=(str(start), str(end)))
         conn.close()
         if df.empty:

@@ -1,5 +1,5 @@
 import streamlit as st
-from db import get_connection, _sql
+from db import get_connection, _sql, USE_POSTGRES
 import pandas as pd
 from reports import generate_student_report
 
