@@ -97,11 +97,31 @@ def mark_attendance(subject_id):
             # Always include submit button so Streamlit doesn't warn
             submitted = st.form_submit_button("Submit")
             if submitted:
-                for student_id, stat in status.items():
-                    c.execute(_sql("INSERT INTO attendance (student_id,subject_id,date,status) VALUES (?,?,?,?)"),
-                              (student_id, subject_id, str(date.today()), stat))
-                conn.commit()
-                st.success("Attendance recorded")
+                try:
+                    inserted_count = 0
+                    for student_id, stat in status.items():
+                        c.execute(_sql("INSERT INTO attendance (student_id,subject_id,date,status) VALUES (?,?,?,?)"),
+                                  (student_id, subject_id, str(date.today()), stat))
+                        inserted_count += 1
+                    
+                    # Commit the transaction
+                    conn.commit()
+                    
+                    # Verify insertion by querying back immediately
+                    c.execute(_sql("SELECT COUNT(*) as cnt FROM attendance WHERE subject_id=? AND date=?"), 
+                             (subject_id, str(date.today())))
+                    verify_row = c.fetchone()
+                    verify_count = verify_row['cnt'] if isinstance(verify_row, dict) else verify_row[0]
+                    
+                    st.success(f"✅ Attendance recorded successfully for {inserted_count} students (verified: {verify_count} total records for today)")
+                except Exception as e:
+                    try:
+                        conn.rollback()
+                    except:
+                        pass
+                    st.error(f"❌ Failed to save attendance: {str(e)}")
+                    import traceback
+                    st.error(f"Details: {traceback.format_exc()}")
     except Exception as e:
         st.error(f"Failed to render attendance form: {e}")
     finally:

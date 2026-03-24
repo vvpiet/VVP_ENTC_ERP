@@ -194,11 +194,30 @@ def lecture_engagement_register(user):
     st.write(f"**Absent ({len(absent_rolls)})**: {', '.join(absent_rolls) if absent_rolls else 'None'}")
 
     if st.button("Save LER"):
-        cur = conn.cursor()
-        cur.execute(_sql("INSERT INTO ler (faculty_id,subject_id,date,lecture_number,syllabus_covered_pct,present_count,absent_rolls) VALUES (?,?,?,?,?,?,?)"),
-                    (fid, subject_id, str(lecture_date), lecture_num, syllabus_pct, len(present_rolls), ",".join(absent_rolls)))
-        conn.commit()
-        st.success("LER saved")
+        try:
+            cur = conn.cursor()
+            cur.execute(_sql("INSERT INTO ler (faculty_id,subject_id,date,lecture_number,syllabus_covered_pct,present_count,absent_rolls) VALUES (?,?,?,?,?,?,?)"),
+                        (fid, subject_id, str(lecture_date), lecture_num, syllabus_pct, len(present_rolls), ",".join(absent_rolls)))
+            
+            # Commit the transaction
+            conn.commit()
+            
+            # Verify insertion by querying back immediately
+            cur_verify = conn.cursor()
+            cur_verify.execute(_sql("SELECT COUNT(*) as cnt FROM ler WHERE faculty_id=? AND date=?"), 
+                              (fid, str(lecture_date)))
+            verify_row = cur_verify.fetchone()
+            verify_count = verify_row['cnt'] if isinstance(verify_row, dict) else verify_row[0]
+            
+            st.success(f"✅ LER saved successfully (verified: {verify_count} LER entries for this date)")
+        except Exception as e:
+            try:
+                conn.rollback()
+            except:
+                pass
+            st.error(f"❌ Failed to save LER: {str(e)}")
+            import traceback
+            st.error(f"Details: {traceback.format_exc()}")
 
     # show previous records for this faculty using cursor
     st.markdown("---")

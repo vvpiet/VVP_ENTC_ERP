@@ -33,6 +33,9 @@ def get_connection() -> Connection:
         conn = psycopg2.connect(DATABASE_URL, sslmode="require")
         # return dict-like rows for compatibility
         conn.cursor_factory = psycopg2.extras.RealDictCursor
+        # Enable autocommit to ensure changes are flushed to database immediately
+        # This is especially important for Neon's serverless connections
+        conn.autocommit = False  # Use explicit commits for now
         return conn
 
     conn = sqlite3.connect(DB_PATH)
