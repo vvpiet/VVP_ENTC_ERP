@@ -79,6 +79,10 @@ def initialize_db():
     conn = get_connection()
     c = conn.cursor()
 
+    # For Postgres, enable autocommit to avoid transaction abort on DDL failures
+    if USE_POSTGRES:
+        conn.autocommit = True
+
     if USE_POSTGRES:
         # Postgres-compatible schema
         c.execute('''
@@ -196,10 +200,14 @@ def initialize_db():
         ''')
 
         # Add academic_year column if it doesn't exist
-        try:
-            c.execute("ALTER TABLE students ADD COLUMN academic_year INTEGER")
-        except:
-            pass
+        c.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='students' AND column_name='academic_year') THEN
+                ALTER TABLE students ADD COLUMN academic_year INTEGER;
+            END IF;
+        END $$;
+        """)
 
         # Add attendance columns for manual date/time/lecture no. if missing
         # Use DO $$ to safely add columns if not exist
