@@ -482,8 +482,31 @@ def view_reports():
     st.write("### Student Attendance Report")
     period = st.selectbox("Period", ["Daily","Weekly","Monthly","Custom"], key="attendance_period")
     today = pd.to_datetime("today").normalize()
+
+    # Default to latest attendance date if available (User complained they choose day with no entries)
+    default_date = today.date()
+    try:
+        data_conn = get_connection()
+        data_cur = data_conn.cursor()
+        data_cur.execute(_sql("SELECT MAX(date) AS max_date FROM attendance"))
+        max_date_row = data_cur.fetchone()
+        if max_date_row:
+            max_date = max_date_row['max_date'] if isinstance(max_date_row, dict) else max_date_row[0]
+            if max_date:
+                try:
+                    default_date = pd.to_datetime(max_date).date()
+                except Exception:
+                    default_date = today.date()
+    except Exception:
+        default_date = today.date()
+    finally:
+        try:
+            data_conn.close()
+        except Exception:
+            pass
+
     if period == "Daily":
-        start = st.date_input("Date", today.date(), key="att_date")
+        start = st.date_input("Date", default_date, key="att_date")
         end = start
     elif period == "Weekly":
         start = st.date_input("Week start", today.date(), key="att_week")

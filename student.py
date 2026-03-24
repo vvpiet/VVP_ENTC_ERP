@@ -27,16 +27,34 @@ def student_attendance(user):
     c.execute(_sql("DELETE FROM attendance WHERE date IN ('date','subject') OR status IN ('status','subject') OR date IS NULL OR status IS NULL"))
     conn.commit()
 
-    # Simple approach: find student by username (which matches roll)
-    username = user['username'].strip()
-    c.execute(_sql("SELECT id,class_level FROM students WHERE roll=? OR roll LIKE ? LIMIT 1"), (username, f"{username}%"))
-    student_row = c.fetchone()
-    
+    # Robust lookup: map current user to student record by id, roll, or name
+    username = user.get('username', '').strip()
+    student_row = None
+
+    # 1. Match by student.id using existing user ID, if available
+    if user.get('id') is not None:
+        try:
+            user_id = int(user['id'])
+            c.execute(_sql("SELECT id,class_level FROM students WHERE id=?"), (user_id,))
+            student_row = c.fetchone()
+        except Exception:
+            student_row = None
+
+    # 2. Match by roll exact match
+    if not student_row and username:
+        c.execute(_sql("SELECT id,class_level FROM students WHERE roll=?"), (username,))
+        student_row = c.fetchone()
+
+    # 3. Match by student name case-insensitive
+    if not student_row and username:
+        c.execute(_sql("SELECT id,class_level FROM students WHERE LOWER(name)=LOWER(?)"), (username,))
+        student_row = c.fetchone()
+
     if not student_row:
         conn.close()
         st.warning("No student record found; contact admin to link your user.")
         return
-    
+
     student_id = student_row['id'] if isinstance(student_row, dict) else student_row[0]
     
     # Query attendance for this student
