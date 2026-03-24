@@ -33,9 +33,8 @@ def get_connection() -> Connection:
         conn = psycopg2.connect(DATABASE_URL, sslmode="require")
         # return dict-like rows for compatibility
         conn.cursor_factory = psycopg2.extras.RealDictCursor
-        # Enable autocommit to ensure changes are flushed to database immediately
-        # This is especially important for Neon's serverless connections
-        conn.autocommit = False  # Use explicit commits for now
+        # Use autocommit by default for DDL robustness on serverless PG backends
+        conn.autocommit = True
         return conn
 
     conn = sqlite3.connect(DB_PATH)
@@ -49,6 +48,57 @@ def _sql(sql: str) -> str:
         # Convert sqlite '?' placeholders to psycopg2 '%s'
         return sql.replace("?", "%s")
     return sql
+
+
+def migrate_sqlite_to_postgres():
+    """Copy attendance and ler rows from local SQLite into Postgres if both are present."""
+    if not USE_POSTGRES:
+        return
+
+    if not os.path.exists(DB_PATH):
+        return
+
+    local_conn = sqlite3.connect(DB_PATH)
+    local_conn.row_factory = sqlite3.Row
+    local_cur = local_conn.cursor()
+
+    remote_conn = get_connection()
+    remote_cur = remote_conn.cursor()
+
+    # Migrate attendance entries that are not already in remote DB
+    local_cur.execute("SELECT * FROM attendance")
+    for row in local_cur.fetchall():
+        local_date = row[3]
+        local_time = row[4] if len(row) > 4 else None
+        local_lecture = row[5] if len(row) > 5 else None
+        local_status = row[6] if len(row) > 6 else None
+
+        remote_cur.execute(
+            "SELECT 1 FROM attendance WHERE student_id=%s AND subject_id=%s AND date=%s AND COALESCE(time,'')=%s AND COALESCE(lecture_number,0)=%s AND status=%s",
+            (row['student_id'], row['subject_id'], local_date, local_time or '', local_lecture or 0, local_status),
+        )
+        if not remote_cur.fetchone():
+            remote_cur.execute(
+                "INSERT INTO attendance (student_id,subject_id,date,time,lecture_number,status) VALUES (%s,%s,%s,%s,%s,%s)",
+                (row['student_id'], row['subject_id'], local_date, local_time, local_lecture, local_status),
+            )
+
+    # Migrate LER entries
+    local_cur.execute("SELECT * FROM ler")
+    for row in local_cur.fetchall():
+        remote_cur.execute(
+            "SELECT 1 FROM ler WHERE faculty_id=%s AND subject_id=%s AND date=%s AND COALESCE(lecture_number,0)=%s",
+            (row['faculty_id'], row['subject_id'], row['date'], row['lecture_number'] or 0),
+        )
+        if not remote_cur.fetchone():
+            remote_cur.execute(
+                "INSERT INTO ler (faculty_id,subject_id,date,lecture_number,syllabus_covered_pct,present_count,absent_rolls) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (row['faculty_id'], row['subject_id'], row['date'], row['lecture_number'], row['syllabus_covered_pct'], row['present_count'], row['absent_rolls']),
+            )
+
+    remote_conn.commit()
+    remote_conn.close()
+    local_conn.close()
 
 
 def execute_query(sql: str, params=None):
@@ -231,6 +281,9 @@ def initialize_db():
         # Ensure we commit DDL in Postgres right away so tables don't disappear if
         # a later statement fails (e.g. ALTER/UPDATE during migrations).
         conn.commit()
+
+        # If we're now on Postgres and local DB file exists, migrate existing local data
+        migrate_sqlite_to_postgres()
 
     else:
         # SQLite schema

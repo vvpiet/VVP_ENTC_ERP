@@ -1,5 +1,5 @@
 import streamlit as st
-from db import initialize_db, get_connection, _sql
+from db import initialize_db, get_connection, _sql, get_db_info
 from auth import validate_login, hash_password, create_user
 from admin import admin_dashboard
 from faculty import faculty_portal
@@ -27,6 +27,11 @@ def main():
     st.set_page_config(page_title="College ERP", layout="wide")
     initialize_db()
     st.sidebar.title("College ERP")
+    db_info = get_db_info()
+    st.sidebar.markdown(f"**DB backend:** {db_info['backend']}")
+    if db_info['backend'] == 'postgres':
+        st.sidebar.markdown(f"**DB host:** {db_info['url']}")
+
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
         st.session_state.user = None

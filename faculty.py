@@ -58,6 +58,25 @@ def faculty_portal(user):
         show_timetable()
 
 
+def _show_faculty_stats(fid):
+    conn = get_connection()
+    c = conn.cursor()
+    try:
+        c.execute(_sql("SELECT COUNT(a.id) as cnt FROM attendance a JOIN subjects s ON a.subject_id=s.id WHERE s.faculty_id=?"), (fid,))
+        att = c.fetchone()
+        att_count = att['cnt'] if isinstance(att, dict) else att[0]
+
+        c.execute(_sql("SELECT COUNT(id) as cnt FROM ler WHERE faculty_id=?"), (fid,))
+        ler = c.fetchone()
+        ler_count = ler['cnt'] if isinstance(ler, dict) else ler[0]
+
+        st.info(f"Faculty DB stats: attendance rows={att_count}, LER rows={ler_count}")
+    except Exception as e:
+        st.warning(f"Unable to get faculty DB stats: {e}")
+    finally:
+        conn.close()
+
+
 def take_attendance(user):
     st.subheader("Take Attendance")
     conn = get_connection()
@@ -65,6 +84,8 @@ def take_attendance(user):
 
     # Ensure there is a faculty record for this user and obtain its id.
     fid = _ensure_faculty_record(user, conn)
+    if fid is not None:
+        _show_faculty_stats(fid)
 
     # retrieve subjects for this faculty
     subjects_data = []
