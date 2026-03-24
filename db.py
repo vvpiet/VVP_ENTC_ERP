@@ -51,7 +51,7 @@ def _sql(sql: str) -> str:
 
 
 def migrate_sqlite_to_postgres():
-    """Copy attendance and ler rows from local SQLite into Postgres if both are present."""
+    """Copy local SQLite schema rows into Postgres/Neon if both are present."""
     if not USE_POSTGRES:
         return
 
@@ -65,35 +65,93 @@ def migrate_sqlite_to_postgres():
     remote_conn = get_connection()
     remote_cur = remote_conn.cursor()
 
-    # Migrate attendance entries that are not already in remote DB
-    local_cur.execute("SELECT * FROM attendance")
+    # 1) Migrate students
+    student_map = {}
+    local_cur.execute("SELECT id,name,roll,email,class_level FROM students")
     for row in local_cur.fetchall():
-        local_date = row[3]
-        local_time = row[4] if len(row) > 4 else None
-        local_lecture = row[5] if len(row) > 5 else None
-        local_status = row[6] if len(row) > 6 else None
+        local_id = row['id']
+        local_roll = row['roll']
+
+        remote_cur.execute("SELECT id FROM students WHERE roll=%s", (local_roll,))
+        existing = remote_cur.fetchone()
+        if existing:
+            student_map[local_id] = existing['id'] if isinstance(existing, dict) else existing[0]
+        else:
+            remote_cur.execute(
+                "INSERT INTO students (name,roll,email,class_level) VALUES (%s,%s,%s,%s) RETURNING id",
+                (row['name'], row['roll'], row['email'], row['class_level']),
+            )
+            new_id = remote_cur.fetchone()['id'] if USE_POSTGRES else remote_cur.lastrowid
+            student_map[local_id] = new_id
+
+    # 2) Migrate faculty
+    faculty_map = {}
+    local_cur.execute("SELECT id,name,department,email FROM faculty")
+    for row in local_cur.fetchall():
+        local_id = row['id']
+        remote_cur.execute("SELECT id FROM faculty WHERE name=%s", (row['name'],))
+        existing = remote_cur.fetchone()
+        if existing:
+            faculty_map[local_id] = existing['id'] if isinstance(existing, dict) else existing[0]
+        else:
+            remote_cur.execute(
+                "INSERT INTO faculty (name,department,email) VALUES (%s,%s,%s) RETURNING id",
+                (row['name'], row['department'], row['email']),
+            )
+            faculty_map[local_id] = remote_cur.fetchone()['id']
+
+    # 3) Migrate subjects
+    subject_map = {}
+    local_cur.execute("SELECT id,name,code,faculty_id,class_level FROM subjects")
+    for row in local_cur.fetchall():
+        local_id = row['id']
+        remote_cur.execute("SELECT id FROM subjects WHERE code=%s", (row['code'],))
+        existing = remote_cur.fetchone()
+        if existing:
+            subject_map[local_id] = existing['id'] if isinstance(existing, dict) else existing[0]
+        else:
+            faculty_old = row['faculty_id']
+            faculty_new = faculty_map.get(faculty_old)
+            remote_cur.execute(
+                "INSERT INTO subjects (name,code,faculty_id,class_level) VALUES (%s,%s,%s,%s) RETURNING id",
+                (row['name'], row['code'], faculty_new, row['class_level']),
+            )
+            subject_map[local_id] = remote_cur.fetchone()['id']
+
+    # 4) Migrate attendance
+    local_cur.execute("SELECT student_id,subject_id,date,time,lecture_number,status FROM attendance")
+    for row in local_cur.fetchall():
+        s_new = student_map.get(row['student_id'])
+        sub_new = subject_map.get(row['subject_id'])
+        if not s_new or not sub_new:
+            continue
 
         remote_cur.execute(
             "SELECT 1 FROM attendance WHERE student_id=%s AND subject_id=%s AND date=%s AND COALESCE(time,'')=%s AND COALESCE(lecture_number,0)=%s AND status=%s",
-            (row['student_id'], row['subject_id'], local_date, local_time or '', local_lecture or 0, local_status),
+            (s_new, sub_new, row['date'], row['time'] or '', row['lecture_number'] or 0, row['status']),
         )
         if not remote_cur.fetchone():
             remote_cur.execute(
                 "INSERT INTO attendance (student_id,subject_id,date,time,lecture_number,status) VALUES (%s,%s,%s,%s,%s,%s)",
-                (row['student_id'], row['subject_id'], local_date, local_time, local_lecture, local_status),
+                (s_new, sub_new, row['date'], row['time'], row['lecture_number'], row['status']),
             )
 
-    # Migrate LER entries
-    local_cur.execute("SELECT * FROM ler")
+    # 5) Migrate LER
+    local_cur.execute("SELECT faculty_id,subject_id,date,lecture_number,syllabus_covered_pct,present_count,absent_rolls FROM ler")
     for row in local_cur.fetchall():
+        f_new = faculty_map.get(row['faculty_id'])
+        sub_new = subject_map.get(row['subject_id'])
+        if not f_new or not sub_new:
+            continue
+
         remote_cur.execute(
             "SELECT 1 FROM ler WHERE faculty_id=%s AND subject_id=%s AND date=%s AND COALESCE(lecture_number,0)=%s",
-            (row['faculty_id'], row['subject_id'], row['date'], row['lecture_number'] or 0),
+            (f_new, sub_new, row['date'], row['lecture_number'] or 0),
         )
         if not remote_cur.fetchone():
             remote_cur.execute(
                 "INSERT INTO ler (faculty_id,subject_id,date,lecture_number,syllabus_covered_pct,present_count,absent_rolls) VALUES (%s,%s,%s,%s,%s,%s,%s)",
-                (row['faculty_id'], row['subject_id'], row['date'], row['lecture_number'], row['syllabus_covered_pct'], row['present_count'], row['absent_rolls']),
+                (f_new, sub_new, row['date'], row['lecture_number'], row['syllabus_covered_pct'], row['present_count'], row['absent_rolls']),
             )
 
     remote_conn.commit()
