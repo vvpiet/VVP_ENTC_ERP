@@ -27,35 +27,29 @@ def student_attendance(user):
     c.execute(_sql("DELETE FROM attendance WHERE date IN ('date','subject') OR status IN ('status','subject') OR date IS NULL OR status IS NULL"))
     conn.commit()
 
-    # Find matching student ID(s) for logged-in user
-    c.execute(_sql("SELECT s.id FROM students s LEFT JOIN users u ON u.id=s.id OR u.username=s.roll WHERE u.username=?"), (user['username'],))
-    student_rows = c.fetchall()
-    student_ids = []
-    for row in student_rows:
-        student_ids.append(row['id'] if isinstance(row, dict) else row[0])
-
-    if not student_ids:
-        # also check by roll as fallback (when student user doesn't exist yet)
-        c.execute(_sql("SELECT id FROM students WHERE roll=?"), (user['username'],))
-        by_roll = c.fetchone()
-        if by_roll:
-            student_ids.append(by_roll['id'] if isinstance(by_roll, dict) else by_roll[0])
-
-    if not student_ids:
+    # Simple approach: find student by username (which matches roll)
+    username = user['username'].strip()
+    c.execute(_sql("SELECT id,class_level FROM students WHERE roll=? OR roll LIKE ? LIMIT 1"), (username, f"{username}%"))
+    student_row = c.fetchone()
+    
+    if not student_row:
         conn.close()
         st.warning("No student record found; contact admin to link your user.")
         return
-
-    id_list_placeholder = ','.join(['?'] * len(student_ids)) if not USE_POSTGRES else ','.join(['%s'] * len(student_ids))
-    q = _sql("SELECT a.date,sub.name as subject,a.status,s.class_level as class "
+    
+    student_id = student_row['id'] if isinstance(student_row, dict) else student_row[0]
+    
+    # Query attendance for this student
+    q = _sql("SELECT a.date, sub.name as subject, a.status, s.class_level as class "
              "FROM attendance a "
              "JOIN subjects sub ON a.subject_id=sub.id "
              "JOIN students s ON s.id=a.student_id "
-             "WHERE a.student_id IN (" + id_list_placeholder + ") "
+             "WHERE a.student_id=? "
              "AND a.status IN ('present','absent') "
              "AND a.date NOT IN ('date','subject') "
              "AND sub.name NOT IN ('subject')")
-    df = pd.read_sql_query(q, conn, params=tuple(student_ids))
+    df = pd.read_sql_query(q, conn, params=(student_id,))
+    
     # drop any garbage header rows still lurking
     if not df.empty:
         df = df[~df['date'].astype(str).str.lower().isin(['date', 'subject'])]
@@ -63,14 +57,20 @@ def student_attendance(user):
         df = df[~df['status'].astype(str).str.lower().isin(['status'])]
         df = df[~df['class'].astype(str).str.lower().isin(['class'])]
 
-    # compute percentages
+    # compute percentages by subject
     pct = pd.read_sql_query(
-        _sql("SELECT sub.name as subject, s.class_level as class, SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END)*100.0/COUNT(*) as pct "
-             "FROM attendance a JOIN subjects sub ON a.subject_id=sub.id "
+        _sql("SELECT sub.name as subject, s.class_level as class, "
+             "SUM(CASE WHEN a.status='present' THEN 1 ELSE 0 END)*100.0/COUNT(*) as pct "
+             "FROM attendance a "
+             "JOIN subjects sub ON a.subject_id=sub.id "
              "JOIN students s ON s.id=a.student_id "
-             "JOIN users u ON (u.id=s.id OR u.username=s.roll) "
-             "WHERE u.username=? AND a.status IN ('present','absent') AND a.date NOT IN ('date','subject') AND s.class_level NOT IN ('class','CLASS') AND sub.name NOT IN ('subject') GROUP BY sub.name,s.class_level"),
-        conn, params=(user['username'],))
+             "WHERE a.student_id=? "
+             "AND a.status IN ('present','absent') "
+             "AND a.date NOT IN ('date','subject') "
+             "AND s.class_level NOT IN ('class','CLASS') "
+             "AND sub.name NOT IN ('subject') "
+             "GROUP BY sub.name, s.class_level"),
+        conn, params=(student_id,))
 
     # convert pct to numeric and drop invalid values
     if not pct.empty:
@@ -79,9 +79,16 @@ def student_attendance(user):
 
     conn.close()
     st.write("### Records")
-    st.dataframe(df)
-    st.write("### Percentages")
-    st.dataframe(pct)
+    if df.empty:
+        st.info("No attendance records found yet.")
+    else:
+        st.dataframe(df)
+    
+    st.write("### Attendance Percentages by Subject")
+    if pct.empty:
+        st.info("No percentage data available.")
+    else:
+        st.dataframe(pct)
 
 
 def show_timetable():

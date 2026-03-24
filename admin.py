@@ -46,13 +46,17 @@ def admin_dashboard():
 
 def manage_users():
     st.subheader("Manage Users")
+    
+    # Select role first (outside form) to immediately show class options
+    role = st.selectbox("Role", ["admin","faculty","student"], key="user_role_select")
+    student_class = None
+    if role == 'student':
+        student_class = st.selectbox("Student Class", ["SY","TY","BTech"], index=0, key="student_class_select")
+    
+    # Now show form for user details with create button
     with st.form("create_user"):
         uname = st.text_input("Username")
         pwd = st.text_input("Password", type='password')
-        role = st.selectbox("Role", ["admin","faculty","student"])
-        student_class = None
-        if role == 'student':
-            student_class = st.selectbox("Student class", ["SY","TY","BTech"], index=0)
         submitted = st.form_submit_button("Create")
         if submitted:
             from auth import create_user
@@ -473,117 +477,180 @@ def manage_timetable():
 
 def view_reports():
     st.subheader("Attendance Reports")
-    period = st.selectbox("Period", ["Daily","Weekly","Monthly","Custom"])
+    
+    # === ATTENDANCE SECTION ===
+    st.write("### Student Attendance Report")
+    period = st.selectbox("Period", ["Daily","Weekly","Monthly","Custom"], key="attendance_period")
     today = pd.to_datetime("today").normalize()
     if period == "Daily":
-        start = st.date_input("Date", today.date())
+        start = st.date_input("Date", today.date(), key="att_date")
         end = start
     elif period == "Weekly":
-        start = st.date_input("Week start", today.date())
+        start = st.date_input("Week start", today.date(), key="att_week")
         end = start + pd.Timedelta(days=6)
     elif period == "Monthly":
-        month = st.date_input("Month start", today.replace(day=1).date())
+        month = st.date_input("Month start", today.replace(day=1).date(), key="att_month")
         start = month
         end = (pd.to_datetime(month) + pd.offsets.MonthEnd(0)).date()
     else:
-        start = st.date_input("Start date", today.date())
-        end = st.date_input("End date", today.date())
+        col1, col2 = st.columns(2)
+        with col1:
+            start = st.date_input("Start date", today.date(), key="att_start")
+        with col2:
+            end = st.date_input("End date", today.date(), key="att_end")
 
-    if st.button("Generate report"):
+    # Optional filters
+    col1, col2 = st.columns(2)
+    with col1:
+        filter_class = st.selectbox("Filter by Class", ["All", "SY", "TY", "BTech"], key="att_filter_class")
+    with col2:
+        filter_status = st.selectbox("Filter by Status", ["All", "Present", "Absent"], key="att_filter_status")
+
+    if st.button("Generate Attendance Report", key="gen_att_report"):
         conn = get_connection()
         cur = conn.cursor()
         # Clean invalid rows before report
         cur.execute(_sql("DELETE FROM attendance WHERE date IN ('date','subject') OR status IN ('status','subject') OR date IS NULL OR status IS NULL"))
         conn.commit()
-        df = pd.read_sql_query(
-            _sql("SELECT a.date, s.name as subject, st.roll, st.name as student, a.status "
-                 "FROM attendance a "
-                 "JOIN students st ON a.student_id=st.id "
-                 "JOIN subjects s ON a.subject_id=s.id "
-                 "WHERE date BETWEEN ? AND ? "
-                 "AND a.status IN ('present','absent') "
-                 "AND a.date NOT IN ('date','subject') "
-                 "AND s.name NOT IN ('subject') "
-                 "AND st.roll NOT IN ('roll')"),
-            conn, params=(str(start), str(end)))
+        
+        # Build query with optional filters
+        query = _sql("SELECT a.date, s.name as subject, st.roll, st.name as student, st.class_level as class, a.status "
+                     "FROM attendance a "
+                     "JOIN students st ON a.student_id=st.id "
+                     "JOIN subjects s ON a.subject_id=s.id "
+                     "WHERE a.date BETWEEN ? AND ? "
+                     "AND a.status IN ('present','absent') "
+                     "AND a.date NOT IN ('date','subject') "
+                     "AND s.name NOT IN ('subject') "
+                     "AND st.roll NOT IN ('roll')")
+        
+        params = [str(start), str(end)]
+        
+        if filter_class != "All":
+            query += _sql(" AND st.class_level = ?")
+            params.append(filter_class)
+        
+        if filter_status != "All":
+            status_val = 'present' if filter_status == 'Present' else 'absent'
+            query += _sql(" AND a.status = ?")
+            params.append(status_val)
+            
+        query += _sql(" ORDER BY a.date DESC, st.class_level, st.roll")
+        
+        df = pd.read_sql_query(query, conn, params=params)
         conn.close()
+        
         if df.empty:
-            st.warning("No attendance records found for the selected period.")
-            return
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("Download CSV", data=csv, file_name=f"attendance_{start}_{end}.csv")
-        st.dataframe(df)
+            st.warning("No attendance records found for the selected period and filters.")
+        else:
+            st.success(f"✅ Found {len(df)} attendance records")
+            
+            # Display summary
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Records", len(df))
+            with col2:
+                present_count = (df['status'] == 'present').sum()
+                st.metric("Present", present_count)
+            with col3:
+                absent_count = (df['status'] == 'absent').sum()
+                st.metric("Absent", absent_count)
+            
+            # Display full data
+            st.write("### Attendance Data")
+            st.dataframe(df, use_container_width=True)
+            
+            # Download options
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button("Download CSV", data=csv, file_name=f"attendance_{start}_{end}.csv", key="att_csv_download")
 
-    # --- LER download section ---
     st.markdown("---")
-    st.subheader("Download LER (Lecture Engagement Register)")
-    ler_date = st.date_input("LER date", pd.to_datetime("today").date())
-    conn = get_connection()
-    ler_df = pd.read_sql_query(
-        _sql("SELECT l.date, f.name AS faculty, s.name AS subject, l.lecture_number, l.syllabus_covered_pct, l.present_count, l.absent_rolls "
-             "FROM ler l "
-             "JOIN faculty f ON l.faculty_id=f.id "
-             "JOIN subjects s ON l.subject_id=s.id "
-             "WHERE l.date = ?"),
-        conn, params=(str(ler_date),))
-    conn.close()
+    
+    # === LER SECTION ===
+    st.write("### Lecture Engagement Register (LER) Report")
+    ler_date = st.date_input("LER date", pd.to_datetime("today").date(), key="ler_date")
+    
+    if st.button("Generate LER Report", key="gen_ler_report"):
+        conn = get_connection()
+        
+        # Query LER data with all details
+        ler_df = pd.read_sql_query(
+            _sql("SELECT l.date, f.name AS faculty, s.name AS subject, s.class_level, "
+                 "l.lecture_number, l.syllabus_covered_pct, l.present_count, l.absent_rolls "
+                 "FROM ler l "
+                 "JOIN faculty f ON l.faculty_id=f.id "
+                 "JOIN subjects s ON l.subject_id=s.id "
+                 "WHERE l.date = ? "
+                 "ORDER BY s.class_level, s.name"),
+            conn, params=(str(ler_date),))
+        conn.close()
 
-    if ler_df.empty:
-        st.info("No LER entries found for the selected date.")
-        return
+        if ler_df.empty:
+            st.info(f"No LER entries found for {ler_date}.")
+        else:
+            st.success(f"✅ Found {len(ler_df)} LER entries for {ler_date}")
+            
+            st.write("### LER Data")
+            st.dataframe(ler_df, use_container_width=True)
 
-    st.write("### LER data")
-    st.dataframe(ler_df)
+            # Provide XLS download
+            from io import BytesIO
+            xls_buf = BytesIO()
+            try:
+                # Prefer openpyxl but fallback to xlsxwriter if not installed
+                with pd.ExcelWriter(xls_buf, engine='openpyxl') as writer:
+                    ler_df.to_excel(writer, index=False, sheet_name='LER')
+                xls_buf.seek(0)
+                st.download_button("Download LER XLS", data=xls_buf.getvalue(), 
+                                 file_name=f"ler_{ler_date}.xlsx", 
+                                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                 key="ler_xls_download")
+            except ImportError:
+                try:
+                    with pd.ExcelWriter(xls_buf, engine='xlsxwriter') as writer:
+                        ler_df.to_excel(writer, index=False, sheet_name='LER')
+                    xls_buf.seek(0)
+                    st.download_button("Download LER XLS", data=xls_buf.getvalue(), 
+                                     file_name=f"ler_{ler_date}.xlsx",
+                                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                     key="ler_xls_download_alt")
+                except ImportError:
+                    st.error("Install openpyxl or xlsxwriter for XLS export: pip install openpyxl xlsxwriter")
 
-    # Provide XLS download
-    from io import BytesIO
-    xls_buf = BytesIO()
-    try:
-        # Prefer openpyxl but fallback to xlsxwriter if not installed
-        with pd.ExcelWriter(xls_buf, engine='openpyxl') as writer:
-            ler_df.to_excel(writer, index=False)
-    except ImportError:
-        try:
-            with pd.ExcelWriter(xls_buf, engine='xlsxwriter') as writer:
-                ler_df.to_excel(writer, index=False)
-        except ImportError:
-            st.error("Install openpyxl or xlsxwriter for XLS export: pip install openpyxl xlsxwriter")
-            xls_buf = None
-    if xls_buf is not None:
-        xls_buf.seek(0)
-        st.download_button("Download LER XLS", data=xls_buf, file_name=f"ler_{ler_date}.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            # Provide PDF download via fpdf
+            try:
+                from fpdf import FPDF
 
-    # Provide PDF download via fpdf
-    try:
-        from fpdf import FPDF
+                def _df_to_pdf_bytes(df):
+                    pdf = FPDF()
+                    pdf.add_page()
+                    pdf.set_font("Arial", "B", 14)
+                    pdf.cell(0, 10, f"LER Report - {ler_date}", ln=True, align="C")
+                    pdf.ln(4)
+                    pdf.set_font("Arial", "", 9)
 
-        def _df_to_pdf_bytes(df):
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", "B", 14)
-            pdf.cell(0, 10, f"LER Report - {ler_date}", ln=True, align="C")
-            pdf.ln(4)
-            pdf.set_font("Arial", "", 9)
+                    # Estimate column width based on page width
+                    page_width = pdf.w - 2 * pdf.l_margin
+                    col_width = page_width / len(df.columns)
 
-            # Estimate column width based on page width
-            page_width = pdf.w - 2 * pdf.l_margin
-            col_width = page_width / len(df.columns)
+                    # Header row
+                    for col in df.columns:
+                        pdf.cell(col_width, 7, str(col), border=1, align='C')
+                    pdf.ln()
 
-            # Header
-            for col in df.columns:
-                pdf.cell(col_width, 8, str(col), border=1)
-            pdf.ln()
+                    # Data rows
+                    for _, row in df.iterrows():
+                        for col in df.columns:
+                            cell_text = str(row[col])[:20]  # Truncate long text
+                            pdf.cell(col_width, 7, cell_text, border=1, align='C')
+                        pdf.ln()
 
-            # Rows
-            for _, row in df.iterrows():
-                for item in row:
-                    text = str(item) if item is not None else ""
-                    pdf.cell(col_width, 6, text[:40], border=1)
-                pdf.ln()
+                    return pdf.output(dest='S').encode('latin-1')
 
-            return pdf.output(dest="S").encode("latin-1")
-
-        pdf_bytes = _df_to_pdf_bytes(ler_df)
-        st.download_button("Download LER PDF", data=pdf_bytes, file_name=f"ler_{ler_date}.pdf", mime="application/pdf")
-    except Exception as e:
-        st.error(f"Failed to build PDF: {e}")
+                pdf_bytes = _df_to_pdf_bytes(ler_df)
+                st.download_button("Download LER PDF", data=pdf_bytes, 
+                                 file_name=f"ler_{ler_date}.pdf",
+                                 mime="application/pdf",
+                                 key="ler_pdf_download")
+            except ImportError:
+                st.info("Install fpdf2 for PDF export: pip install fpdf2")
