@@ -477,7 +477,26 @@ def manage_timetable():
 
 def view_reports():
     st.subheader("Attendance Reports")
-    
+
+    conn = get_connection()
+    c = conn.cursor()
+    try:
+        c.execute(_sql("SELECT COUNT(*) as cnt FROM attendance"))
+        row_att = c.fetchone()
+        att_cnt = row_att['cnt'] if isinstance(row_att, dict) else row_att[0]
+    except Exception:
+        att_cnt = 'N/A'
+    try:
+        c.execute(_sql("SELECT COUNT(*) as cnt FROM ler"))
+        row_ler = c.fetchone()
+        ler_cnt = row_ler['cnt'] if isinstance(row_ler, dict) else row_ler[0]
+    except Exception:
+        ler_cnt = 'N/A'
+    c.close()
+    conn.close()
+
+    st.info(f"Remote data counts: attendance={att_cnt}, LER={ler_cnt}")
+
     # === ATTENDANCE SECTION ===
     st.write("### Student Attendance Report")
     period = st.selectbox("Period", ["Daily","Weekly","Monthly","Custom"], key="attendance_period")

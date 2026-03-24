@@ -140,9 +140,19 @@ def mark_attendance(subject_id, lecture_date=None, lecture_time=None, lecture_nu
                 verify_row = c.fetchone()
                 verify_count = verify_row['cnt'] if isinstance(verify_row, dict) else verify_row[0]
 
+                c.execute(
+                    _sql("SELECT id,student_id,subject_id,date,time,lecture_number,status FROM attendance WHERE subject_id=? AND date=? AND time=? AND lecture_number=? ORDER BY id DESC LIMIT 5"),
+                    (subject_id, lecture_date_str, lecture_time_str, lecture_number)
+                )
+                sample_rows = c.fetchall()
+                sample_rows_list = [dict(r) if isinstance(r, dict) else {
+                    'id': r[0], 'student_id': r[1], 'subject_id': r[2], 'date': r[3], 'time': r[4], 'lecture_number': r[5], 'status': r[6]
+                } for r in sample_rows]
+
                 st.success(
                     f"✅ Attendance recorded for {inserted_count} students (verified: {verify_count} rows for {lecture_date_str} {lecture_time_str}, lecture {lecture_number})"
                 )
+                st.json({'sample_recent_records': sample_rows_list})
             except Exception as e:
                 try:
                     conn.rollback()

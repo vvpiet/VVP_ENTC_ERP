@@ -237,6 +237,14 @@ def lecture_engagement_register(user):
             verify_count = verify_row['cnt'] if isinstance(verify_row, dict) else verify_row[0]
             
             st.success(f"✅ LER saved successfully (verified: {verify_count} LER entries for this date)")
+
+            cur_verify.execute(_sql("SELECT id,faculty_id,subject_id,date,lecture_number,syllabus_covered_pct,present_count,absent_rolls FROM ler WHERE faculty_id=? AND date=? ORDER BY id DESC LIMIT 5"),
+                              (fid, str(lecture_date)))
+            sample_ler_rows = cur_verify.fetchall()
+            sample_ler_list = [dict(r) if isinstance(r, dict) else {
+                'id': r[0], 'faculty_id': r[1], 'subject_id': r[2], 'date': r[3], 'lecture_number': r[4], 'syllabus_covered_pct': r[5], 'present_count': r[6], 'absent_rolls': r[7]
+            } for r in sample_ler_rows]
+            st.json({'sample_recent_ler': sample_ler_list})
         except Exception as e:
             try:
                 conn.rollback()
