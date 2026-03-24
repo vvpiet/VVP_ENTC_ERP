@@ -509,8 +509,8 @@ def view_reports():
     if st.button("Generate Attendance Report", key="gen_att_report"):
         conn = get_connection()
         cur = conn.cursor()
-        # Clean invalid rows before report
-        cur.execute(_sql("DELETE FROM attendance WHERE date IN ('date','subject') OR status IN ('status','subject') OR date IS NULL OR status IS NULL"))
+        # Clean invalid rows before report - delete any that look like headers
+        cur.execute(_sql("DELETE FROM attendance WHERE LOWER(date) IN ('date','subject','null','') OR LOWER(status) IN ('status','null','')"))
         conn.commit()
         
         # Build query with optional filters
@@ -519,10 +519,7 @@ def view_reports():
                      "JOIN students st ON a.student_id=st.id "
                      "JOIN subjects s ON a.subject_id=s.id "
                      "WHERE a.date BETWEEN ? AND ? "
-                     "AND a.status IN ('present','absent') "
-                     "AND a.date NOT IN ('date','subject') "
-                     "AND s.name NOT IN ('subject') "
-                     "AND st.roll NOT IN ('roll')")
+                     "AND a.status IN ('present','absent')")
         
         params = [str(start), str(end)]
         
@@ -538,12 +535,20 @@ def view_reports():
         query += _sql(" ORDER BY a.date DESC, st.class_level, st.roll")
         
         df = pd.read_sql_query(query, conn, params=params)
+        
+        # Additional validation to filter any remaining garbage rows at dataframe level
+        if not df.empty:
+            # Remove rows where any column looks like a header value
+            garbage_keywords = {'date', 'subject', 'roll', 'student', 'class', 'status', 'null', 'n/a', 'none'}
+            for col in df.columns:
+                df = df[~df[col].astype(str).str.lower().isin(garbage_keywords)]
+        
         conn.close()
         
         if df.empty:
             st.warning("No attendance records found for the selected period and filters.")
         else:
-            st.success(f"✅ Found {len(df)} attendance records")
+            st.success(f"✅ Found {len(df)} valid attendance records")
             
             # Display summary
             col1, col2, col3 = st.columns(3)
@@ -583,12 +588,20 @@ def view_reports():
                  "WHERE l.date = ? "
                  "ORDER BY s.class_level, s.name"),
             conn, params=(str(ler_date),))
+        
+        # Additional validation to filter any garbage rows at dataframe level
+        if not ler_df.empty:
+            # Remove rows where faculty/subject/date look like headers
+            garbage_keywords = {'date', 'faculty', 'subject', 'class_level', 'lecture_number', 'syllabus_covered_pct', 'present_count', 'absent_rolls', 'null', 'n/a', 'none'}
+            for col in ler_df.columns:
+                ler_df = ler_df[~ler_df[col].astype(str).str.lower().isin(garbage_keywords)]
+        
         conn.close()
 
         if ler_df.empty:
             st.info(f"No LER entries found for {ler_date}.")
         else:
-            st.success(f"✅ Found {len(ler_df)} LER entries for {ler_date}")
+            st.success(f"✅ Found {len(ler_df)} valid LER entries for {ler_date}")
             
             st.write("### LER Data")
             st.dataframe(ler_df, use_container_width=True)
