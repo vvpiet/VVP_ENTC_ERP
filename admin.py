@@ -537,7 +537,7 @@ def view_reports():
         conn.commit()
         
         # Build query with optional filters
-        query = _sql("SELECT a.date, s.name as subject, st.roll, st.name as student, st.class_level as class, a.status "
+        query = _sql("SELECT a.date, a.time, a.lecture_number, s.name as subject, st.roll, st.name as student, st.class_level as class, a.status "
                      "FROM attendance a "
                      "JOIN students st ON a.student_id=st.id "
                      "JOIN subjects s ON a.subject_id=s.id "

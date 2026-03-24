@@ -126,11 +126,13 @@ def initialize_db():
             student_id INTEGER NOT NULL,
             subject_id INTEGER NOT NULL,
             date TEXT NOT NULL,
+            time TEXT,
+            lecture_number INTEGER,
             status TEXT CHECK(status IN ('present','absent')),
             FOREIGN KEY(student_id) REFERENCES students(id),
             FOREIGN KEY(subject_id) REFERENCES subjects(id)
         )
-        ''')
+        ''' )
 
         c.execute('''
         CREATE TABLE IF NOT EXISTS timetable (
@@ -199,6 +201,16 @@ def initialize_db():
         except:
             pass
 
+        # Add attendance columns for manual date/time/lecture no. if missing
+        try:
+            c.execute("ALTER TABLE attendance ADD COLUMN time TEXT")
+        except:
+            pass
+        try:
+            c.execute("ALTER TABLE attendance ADD COLUMN lecture_number INTEGER")
+        except:
+            pass
+
         # Ensure we commit DDL in Postgres right away so tables don't disappear if
         # a later statement fails (e.g. ALTER/UPDATE during migrations).
         conn.commit()
@@ -250,6 +262,8 @@ def initialize_db():
             student_id INTEGER NOT NULL,
             subject_id INTEGER NOT NULL,
             date TEXT NOT NULL,
+            time TEXT,
+            lecture_number INTEGER,
             status TEXT CHECK(status IN ('present','absent')),
             FOREIGN KEY(student_id) REFERENCES students(id),
             FOREIGN KEY(subject_id) REFERENCES subjects(id)
@@ -328,6 +342,14 @@ def initialize_db():
         pass
     try:
         c.execute(_sql("ALTER TABLE subjects ADD COLUMN class_level TEXT"))
+    except Exception:
+        pass
+    try:
+        c.execute(_sql("ALTER TABLE attendance ADD COLUMN time TEXT"))
+    except Exception:
+        pass
+    try:
+        c.execute(_sql("ALTER TABLE attendance ADD COLUMN lecture_number INTEGER"))
     except Exception:
         pass
 

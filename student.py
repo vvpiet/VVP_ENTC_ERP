@@ -58,7 +58,7 @@ def student_attendance(user):
     student_id = student_row['id'] if isinstance(student_row, dict) else student_row[0]
     
     # Query attendance for this student
-    q = _sql("SELECT a.date, sub.name as subject, a.status, s.class_level as class "
+    q = _sql("SELECT a.date, a.time, a.lecture_number, sub.name as subject, a.status, s.class_level as class "
              "FROM attendance a "
              "JOIN subjects sub ON a.subject_id=sub.id "
              "JOIN students s ON s.id=a.student_id "

@@ -1,5 +1,6 @@
 import os
 import streamlit as st
+from datetime import date, datetime
 from db import get_connection, _sql, USE_POSTGRES
 import pandas as pd
 from attendance import mark_attendance
@@ -99,16 +100,19 @@ def take_attendance(user):
     if st.button("Load students") and subject_id is not None:
         st.session_state.selected_subject = subject_id
 
-    # if a subject has been loaded, display attendance form
+    # if a subject has been loaded, display attendance form and attendance metadata
     if st.session_state.selected_subject is not None:
-        mark_attendance(st.session_state.selected_subject)
+        lecture_date = st.date_input("Lecture date", date.today(), key="attendance_lecture_date")
+        lecture_time = st.time_input("Lecture time", datetime.now().time(), key="attendance_lecture_time")
+        lecture_number = st.number_input("Lecture number", min_value=1, value=1, key="attendance_lecture_number")
+        mark_attendance(st.session_state.selected_subject, lecture_date, lecture_time, lecture_number)
 
 
 def view_attendance(user):
     st.subheader("Attendance Records")
     conn = get_connection()
     c = conn.cursor()
-    c.execute(_sql("SELECT a.date,s.name as student,s.class_level as class,sub.name as subject,a.status FROM attendance a "
+    c.execute(_sql("SELECT a.date,a.time,a.lecture_number,s.name as student,s.class_level as class,sub.name as subject,a.status FROM attendance a "
              "JOIN students s ON a.student_id=s.id "
              "JOIN subjects sub ON a.subject_id=sub.id"))
     rows = c.fetchall()
@@ -120,10 +124,12 @@ def view_attendance(user):
         for row in rows:
             row_dict = row if isinstance(row, dict) else {
                 'date': row[0],
-                'student': row[1],
-                'class': row[2],
-                'subject': row[3],
-                'status': row[4]
+                'time': row[1],
+                'lecture_number': row[2],
+                'student': row[3],
+                'class': row[4],
+                'subject': row[5],
+                'status': row[6]
             }
             data.append(row_dict)
         df = pd.DataFrame(data)
