@@ -65,7 +65,8 @@ def student_attendance(user):
              "WHERE a.student_id=? "
              "AND a.status IN ('present','absent') "
              "AND a.date NOT IN ('date','subject') "
-             "AND sub.name NOT IN ('subject')")
+             "AND sub.name NOT IN ('subject') "
+             "ORDER BY a.date DESC, a.time DESC, a.lecture_number DESC")
     df = pd.read_sql_query(q, conn, params=(student_id,))
     
     # drop any garbage header rows still lurking

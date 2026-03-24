@@ -555,7 +555,7 @@ def view_reports():
             query += _sql(" AND a.status = ?")
             params.append(status_val)
             
-        query += _sql(" ORDER BY a.date DESC, st.class_level, st.roll")
+        query += _sql(" ORDER BY a.date DESC, a.time DESC, a.lecture_number DESC, st.class_level, st.roll")
         
         df = pd.read_sql_query(query, conn, params=params)
         

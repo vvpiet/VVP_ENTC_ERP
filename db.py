@@ -202,14 +202,23 @@ def initialize_db():
             pass
 
         # Add attendance columns for manual date/time/lecture no. if missing
-        try:
-            c.execute("ALTER TABLE attendance ADD COLUMN time TEXT")
-        except:
-            pass
-        try:
-            c.execute("ALTER TABLE attendance ADD COLUMN lecture_number INTEGER")
-        except:
-            pass
+        # Use DO $$ to safely add columns if not exist
+        c.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='attendance' AND column_name='time') THEN
+                ALTER TABLE attendance ADD COLUMN time TEXT;
+            END IF;
+        END $$;
+        """)
+        c.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='attendance' AND column_name='lecture_number') THEN
+                ALTER TABLE attendance ADD COLUMN lecture_number INTEGER;
+            END IF;
+        END $$;
+        """)
 
         # Ensure we commit DDL in Postgres right away so tables don't disappear if
         # a later statement fails (e.g. ALTER/UPDATE during migrations).
