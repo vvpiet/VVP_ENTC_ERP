@@ -49,7 +49,7 @@ def create_tables():
         );
         CREATE TABLE IF NOT EXISTS attendance (
             id SERIAL PRIMARY KEY,
-            student_id INTEGER REFERENCES students(id),
+            student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
             subject_id INTEGER REFERENCES subjects(id),
             faculty_id INTEGER REFERENCES users(id),
             date DATE NOT NULL,
@@ -89,7 +89,7 @@ def create_tables():
         );
         CREATE TABLE IF NOT EXISTS gradecards (
             id SERIAL PRIMARY KEY,
-            student_id INTEGER REFERENCES students(id),
+            student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
             semester VARCHAR(20),
             course VARCHAR(50),
             pdf_file BYTEA NOT NULL,
@@ -119,7 +119,7 @@ def create_tables():
         CREATE TABLE IF NOT EXISTS mcq_test_attempts (
             id SERIAL PRIMARY KEY,
             test_id INTEGER REFERENCES mcq_tests(id) ON DELETE CASCADE,
-            student_id INTEGER REFERENCES students(id),
+            student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
             started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             finished_at TIMESTAMP,
             score INTEGER,
@@ -149,7 +149,7 @@ def ensure_schema():
     cur.execute('''
         CREATE TABLE IF NOT EXISTS gradecards (
             id SERIAL PRIMARY KEY,
-            student_id INTEGER REFERENCES students(id),
+            student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
             semester VARCHAR(20),
             course VARCHAR(50),
             pdf_file BYTEA NOT NULL,
@@ -179,7 +179,7 @@ def ensure_schema():
         CREATE TABLE IF NOT EXISTS mcq_test_attempts (
             id SERIAL PRIMARY KEY,
             test_id INTEGER REFERENCES mcq_tests(id) ON DELETE CASCADE,
-            student_id INTEGER REFERENCES students(id),
+            student_id INTEGER REFERENCES students(id) ON DELETE CASCADE,
             started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             finished_at TIMESTAMP,
             score INTEGER,
@@ -499,6 +499,7 @@ def delete_student(student_id):
     # Delete all related student records first to satisfy foreign key constraints.
     cur.execute('DELETE FROM attendance WHERE student_id = %s', (student_id,))
     cur.execute('DELETE FROM gradecards WHERE student_id = %s', (student_id,))
+    cur.execute('DELETE FROM mcq_test_answers WHERE attempt_id IN (SELECT id FROM mcq_test_attempts WHERE student_id = %s)', (student_id,))
     cur.execute('DELETE FROM mcq_test_attempts WHERE student_id = %s', (student_id,))
     # Delete student
     cur.execute('DELETE FROM students WHERE id = %s', (student_id,))
