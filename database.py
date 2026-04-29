@@ -146,6 +146,12 @@ def ensure_schema():
     cur = conn.cursor()
     cur.execute("ALTER TABLE lecture_engagement ADD COLUMN IF NOT EXISTS absent_roll_numbers TEXT[]")
     cur.execute("ALTER TABLE students ADD COLUMN IF NOT EXISTS prn VARCHAR(100)")
+    cur.execute("ALTER TABLE attendance DROP CONSTRAINT IF EXISTS attendance_student_id_fkey")
+    cur.execute("ALTER TABLE attendance ADD CONSTRAINT attendance_student_id_fkey FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE")
+    cur.execute("ALTER TABLE gradecards DROP CONSTRAINT IF EXISTS gradecards_student_id_fkey")
+    cur.execute("ALTER TABLE gradecards ADD CONSTRAINT gradecards_student_id_fkey FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE")
+    cur.execute("ALTER TABLE mcq_test_attempts DROP CONSTRAINT IF EXISTS mcq_test_attempts_student_id_fkey")
+    cur.execute("ALTER TABLE mcq_test_attempts ADD CONSTRAINT mcq_test_attempts_student_id_fkey FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE")
     cur.execute('''
         CREATE TABLE IF NOT EXISTS gradecards (
             id SERIAL PRIMARY KEY,
