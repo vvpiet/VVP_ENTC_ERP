@@ -512,3 +512,18 @@ def delete_student(student_id):
     conn.commit()
     cur.close()
     conn.close()
+
+
+def delete_students(student_ids):
+    if not student_ids:
+        return
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute('DELETE FROM attendance WHERE student_id = ANY(%s)', (student_ids,))
+    cur.execute('DELETE FROM gradecards WHERE student_id = ANY(%s)', (student_ids,))
+    cur.execute('DELETE FROM mcq_test_answers WHERE attempt_id IN (SELECT id FROM mcq_test_attempts WHERE student_id = ANY(%s))', (student_ids,))
+    cur.execute('DELETE FROM mcq_test_attempts WHERE student_id = ANY(%s)', (student_ids,))
+    cur.execute('DELETE FROM students WHERE id = ANY(%s)', (student_ids,))
+    conn.commit()
+    cur.close()
+    conn.close()
