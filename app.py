@@ -487,11 +487,13 @@ def admin_page():
             student_options = [f"{s['roll_no']} - {s['name']} ({s['class_name']})" for s in students]
             student_map = {option: s['id'] for option, s in zip(student_options, students)}
             selected_student_options = st.multiselect("Select students to delete", student_options, key="selected_students_to_delete")
-            if selected_student_options:
-                if st.button("Delete selected students", key="delete_selected_students"):
+            if st.button("Delete selected students", key="delete_selected_students"):
+                if selected_student_options:
                     delete_students([student_map[opt] for opt in selected_student_options])
                     st.success(f"Deleted {len(selected_student_options)} students.")
                     st.experimental_rerun()
+                else:
+                    st.warning("Select one or more students before deleting.")
             st.divider()
             st.subheader("Student List")
             for student in students:
