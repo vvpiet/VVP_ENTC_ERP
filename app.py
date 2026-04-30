@@ -486,7 +486,14 @@ def admin_page():
         else:
             student_options = [f"{s['roll_no']} - {s['name']} ({s['class_name']})" for s in students]
             student_map = {option: s['id'] for option, s in zip(student_options, students)}
-            selected_student_options = st.multiselect("Select students to delete", student_options, key="selected_students_to_delete")
+            st.info("Bulk delete: select students from the list below, or use Select all.")
+            select_all = st.checkbox("Select all students", key="select_all_students_to_delete")
+            selected_student_options = st.multiselect(
+                "Select students to delete",
+                student_options,
+                default=student_options if select_all else [],
+                key="selected_students_to_delete"
+            )
             if st.button("Delete selected students", key="delete_selected_students"):
                 if selected_student_options:
                     delete_students([student_map[opt] for opt in selected_student_options])
