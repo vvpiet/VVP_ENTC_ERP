@@ -1,4 +1,5 @@
 import os
+import time
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2 import Binary
@@ -234,6 +235,25 @@ def authenticate_user(username, password):
         return user
     return None
 
+
+def fetchall_read_query(query, params=None, retries=3):
+    attempt = 0
+    while True:
+        conn = get_db_connection()
+        conn.autocommit = True
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cur.execute(query, params or ())
+            return cur.fetchall()
+        except psycopg2.errors.DeadlockDetected:
+            attempt += 1
+            if attempt >= retries:
+                raise
+            time.sleep(0.1 * attempt)
+        finally:
+            cur.close()
+            conn.close()
+
 # Other functions will be added as needed
 
 # Faculty resource functions
@@ -449,22 +469,14 @@ def submit_student_test_attempt(test_id, roll_no, answers, score, total_marks, p
 
 
 def get_student_test_attempts(roll_no):
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute(
+    return fetchall_read_query(
         'SELECT a.id, a.test_id, a.score, a.total_marks, a.percent, a.passed, a.finished_at, t.title, s.name as subject_name FROM mcq_test_attempts a JOIN mcq_tests t ON a.test_id = t.id JOIN subjects s ON t.subject_id = s.id JOIN students st ON a.student_id = st.id WHERE st.roll_no = %s ORDER BY a.finished_at DESC',
         (roll_no,)
     )
-    attempts = cur.fetchall()
-    cur.close()
-    conn.close()
-    return attempts
 
 
 def get_mcq_test_results():
-    conn = get_db_connection()
-    cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute(
+    return fetchall_read_query(
         'SELECT a.id as attempt_id, t.title as test_title, s.name as subject_name, st.roll_no as student_roll_no, st.name as student_name, u.name as faculty_name, a.score, a.total_marks, a.percent, a.passed, a.finished_at, t.proctor_notes '
         'FROM mcq_test_attempts a '
         'JOIN mcq_tests t ON a.test_id = t.id '
@@ -473,10 +485,6 @@ def get_mcq_test_results():
         'JOIN students st ON a.student_id = st.id '
         'ORDER BY a.finished_at DESC'
     )
-    results = cur.fetchall()
-    cur.close()
-    conn.close()
-    return results
 
 # Student management functions
 def get_all_students():
